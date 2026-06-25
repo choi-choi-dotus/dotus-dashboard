@@ -82,6 +82,14 @@ st.markdown(f"""
 [data-testid="stSidebar"] span[data-baseweb="tag"] span {{
     color: {CYAN} !important;
 }}
+/* 메인 영역 멀티셀렉트 태그 */
+span[data-baseweb="tag"] {{
+    background-color: #0e3a50 !important;
+    color: {CYAN} !important;
+}}
+span[data-baseweb="tag"] span {{
+    color: {CYAN} !important;
+}}
 p, span, label, div {{ color: {TEXT2}; }}
 h1, h2, h3, h4 {{ color: {TEXT} !important; }}
 hr {{ border-color: {BORDER} !important; }}
@@ -454,12 +462,12 @@ with tab1:
     st.markdown("---")
 
     # ── 월별 매출 / 입고 수량 (나란히, 같은 높이) ─────────
+    sv_opt = st.radio("매출 표시 기준", ["금액 (억원)", "수량 (개)"], horizontal=True, key="sv2")
     left_c, right_c = st.columns(2)
     CHART_H = 300
 
     with left_c:
         st.markdown("### 월별 매출")
-        sv_opt = st.radio("표시 기준", ["금액 (억원)", "수량 (개)"], horizontal=True, key="sv2")
         sm = filtered.groupby("year_month").agg(
             순매출=("net_sales","sum"), 수량=("net_qty","sum")
         ).reset_index()
@@ -482,7 +490,6 @@ with tab1:
 
     with right_c:
         st.markdown("### 월별 입고 수량")
-        st.markdown("&nbsp;", unsafe_allow_html=True)  # 높이 맞춤용 spacer
         stk = df_stock[
             (df_stock["year_month"] >= month_start) &
             (df_stock["year_month"] <= month_end)
@@ -525,7 +532,12 @@ with tab2:
             default=sorted(df_sales["client"].unique()),
             key="detail_clients"
         )
-    keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등 모두 검색")
+
+    s1, s2 = st.columns(2)
+    with s1:
+        keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등")
+    with s2:
+        order_kw = st.text_input("주문번호 검색", placeholder="order_no_1 또는 order_no_2로 검색")
     st.markdown("")
 
     # 필터 적용
@@ -537,6 +549,12 @@ with tab2:
     if keyword.strip():
         for kw in keyword.strip().split():
             detail_df = detail_df[detail_df["product_name"].str.contains(kw, case=False, na=False)]
+    if order_kw.strip():
+        mask = (
+            detail_df["order_no_1"].astype(str).str.contains(order_kw.strip(), case=False, na=False) |
+            detail_df["order_no_2"].astype(str).str.contains(order_kw.strip(), case=False, na=False)
+        )
+        detail_df = detail_df[mask]
 
     # KPI
     c1, c2, c3 = st.columns(3)
