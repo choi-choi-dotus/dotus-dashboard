@@ -307,7 +307,7 @@ st.markdown(
 st.markdown("---")
 
 # ════════════════════════════════════════════════════════
-tab1, tab2 = st.tabs(["📈 매출 대시보드", "🔍 상세 데이터 조회"])
+tab1, tab2, tab3 = st.tabs(["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문번호별 조회"])
 
 # ════════════════════════════════════════════════════════
 # TAB 1
@@ -533,11 +533,7 @@ with tab2:
             key="detail_clients"
         )
 
-    s1, s2 = st.columns(2)
-    with s1:
-        keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등")
-    with s2:
-        order_kw = st.text_input("주문번호 검색", placeholder="order_no_1 또는 order_no_2로 검색")
+    keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등")
     st.markdown("")
 
     # 필터 적용
@@ -549,12 +545,6 @@ with tab2:
     if keyword.strip():
         for kw in keyword.strip().split():
             detail_df = detail_df[detail_df["product_name"].str.contains(kw, case=False, na=False)]
-    if order_kw.strip():
-        mask = (
-            detail_df["order_no_1"].astype(str).str.contains(order_kw.strip(), case=False, na=False) |
-            detail_df["order_no_2"].astype(str).str.contains(order_kw.strip(), case=False, na=False)
-        )
-        detail_df = detail_df[mask]
 
     # KPI
     c1, c2, c3 = st.columns(3)
@@ -609,6 +599,77 @@ with tab2:
     disp["순매출"]  = disp["순매출"].apply(lambda x: f"₩{x:,}")
     disp["환불금액"] = disp["환불금액"].apply(lambda x: f"₩{x:,}")
     st.dataframe(disp, use_container_width=True, hide_index=False, height=480)
+
+# ════════════════════════════════════════════════════════
+# TAB 3 : 주문번호별 조회
+# ════════════════════════════════════════════════════════
+with tab3:
+    st.markdown("### 🧾 주문번호별 조회")
+    st.markdown(f"<span style='color:{TEXT2};font-size:0.85rem;'>주문번호로 매출 상세 내역을 조회하세요.</span>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    # 필터
+    o1, o2, o3 = st.columns([1, 1, 2])
+    with o1:
+        o_date_from = st.date_input("시작일", value=df_sales["date"].min().date(),
+                                    min_value=df_sales["date"].min().date(),
+                                    max_value=df_sales["date"].max().date(), key="o_date_from")
+    with o2:
+        o_date_to = st.date_input("종료일", value=df_sales["date"].max().date(),
+                                  min_value=df_sales["date"].min().date(),
+                                  max_value=df_sales["date"].max().date(), key="o_date_to")
+    with o3:
+        order_kw = st.text_input("주문번호 검색", placeholder="주문번호 일부만 입력해도 검색 가능")
+
+    st.markdown("")
+
+    # 필터 적용
+    order_df = df_sales[
+        (df_sales["date"].dt.date >= o_date_from) &
+        (df_sales["date"].dt.date <= o_date_to)
+    ].copy()
+
+    if order_kw.strip():
+        mask = (
+            order_df["order_no_1"].astype(str).str.contains(order_kw.strip(), case=False, na=False) |
+            order_df["order_no_2"].astype(str).str.contains(order_kw.strip(), case=False, na=False)
+        )
+        order_df = order_df[mask]
+
+    # KPI
+    oc1, oc2, oc3 = st.columns(3)
+    with oc1: st.metric("조회 건수",   f"{len(order_df):,}건")
+    with oc2: st.metric("순매출 합계", f"₩{order_df['net_sales'].sum()/1e8:.2f}억")
+    with oc3: st.metric("판매 수량",   f"{order_df['net_qty'].sum():,}개")
+
+    st.markdown("---")
+
+    # 주문번호별 매출 합산
+    st.markdown("### 주문번호별 매출 금액")
+
+    agg_order = order_df.groupby(["order_no_1", "order_no_2"]).agg(
+        매출금액=("net_sales", "sum"),
+        판매수량=("net_qty", "sum"),
+        주문일=("date", "min"),
+        채널=("client", "first"),
+        상품수=("product_name", "nunique"),
+        환불수량=("return_quantity", "sum"),
+        환불금액=("return_sales_amount", "sum")
+    ).reset_index()
+
+    agg_order = agg_order.sort_values("매출금액", ascending=False).reset_index(drop=True)
+    agg_order.index += 1
+    agg_order["주문일"] = agg_order["주문일"].dt.strftime("%Y-%m-%d")
+
+    disp_order = agg_order.copy()
+    disp_order["매출금액"]  = disp_order["매출금액"].apply(lambda x: f"₩{x:,}")
+    disp_order["환불금액"]  = disp_order["환불금액"].apply(lambda x: f"₩{x:,}")
+    disp_order = disp_order.rename(columns={
+        "order_no_1": "주문번호1",
+        "order_no_2": "주문번호2"
+    })
+
+    st.dataframe(disp_order, use_container_width=True, hide_index=False, height=520)
 
 st.markdown("---")
 st.caption("Dotus Dashboard · 데이터 기준: 제공된 엑셀 파일")
