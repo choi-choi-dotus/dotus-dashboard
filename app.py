@@ -374,7 +374,7 @@ with tab1:
         colorscale=[[0, "#0d1117"], [0.5, "#1f6feb"], [1, "#58a6ff"]],
         text=[[f"₩{v:.1f}억" for v in row] for row in pivot_table.values / 1e8],
         texttemplate="%{text}", textfont=dict(color="#f0f6fc", size=11),
-        colorbar=dict(title="억원", tickfont=dict(color="#c9d1d9"), titlefont=dict(color="#c9d1d9"))
+        colorbar=dict(title=dict(text="억원", font=dict(color="#c9d1d9")), tickfont=dict(color="#c9d1d9"))
     ))
     fig_heat.update_layout(
         height=380,
