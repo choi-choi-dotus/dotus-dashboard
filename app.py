@@ -287,7 +287,7 @@ with tab1:
         height=360,
         **dark_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(color="#c9d1d9")))
     )
-    fig_monthly.update_xaxes(**AXIS)
+    fig_monthly.update_xaxes(type="category", **AXIS)
     fig_monthly.update_yaxes(title_text="순매출 (원)", secondary_y=False, tickformat=",", **AXIS)
     fig_monthly.update_yaxes(title_text="MoM 증가율 (%)", secondary_y=True, **AXIS)
     st.plotly_chart(fig_monthly, use_container_width=True)
@@ -359,7 +359,7 @@ with tab1:
         height=380,
         **dark_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(color="#c9d1d9")))
     )
-    fig_multi.update_xaxes(**AXIS)
+    fig_multi.update_xaxes(type="category", **AXIS)
     fig_multi.update_yaxes(tickformat=",", **AXIS)
     st.plotly_chart(fig_multi, use_container_width=True)
 
@@ -424,37 +424,42 @@ with tab2:
     st.markdown("<span style='color:#8b949e;font-size:0.85rem;'>일별 날짜 범위와 상품명으로 원하는 데이터를 조회하세요.</span>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # 필터 행
+    # 필터 행 1: 날짜 + 채널
     f1, f2, f3 = st.columns([1, 1, 2])
-
     with f1:
         date_min = df_sales["date"].min().date()
         date_max = df_sales["date"].max().date()
         date_from = st.date_input("시작일", value=date_min, min_value=date_min, max_value=date_max)
-
     with f2:
         date_to = st.date_input("종료일", value=date_max, min_value=date_min, max_value=date_max)
-
     with f3:
-        keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등 모두 검색")
+        detail_clients = st.multiselect(
+            "채널 선택",
+            options=sorted(df_sales["client"].unique()),
+            default=sorted(df_sales["client"].unique()),
+            key="detail_clients"
+        )
+
+    # 필터 행 2: 상품명 검색
+    keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등 모두 검색")
 
     st.markdown("")
 
     # 조회 필터 적용
     detail_df = df_sales[
         (df_sales["date"].dt.date >= date_from) &
-        (df_sales["date"].dt.date <= date_to)
+        (df_sales["date"].dt.date <= date_to) &
+        (df_sales["client"].isin(detail_clients))
     ].copy()
 
     if keyword.strip():
-        # 공백으로 분리된 키워드 모두 포함하는 행 검색
         keywords = keyword.strip().split()
         mask = pd.Series([True] * len(detail_df), index=detail_df.index)
         for kw in keywords:
             mask = mask & detail_df["product_name"].str.contains(kw, case=False, na=False)
         detail_df = detail_df[mask]
 
-    # 결과 요약
+    # 결과 요약 KPI
     col_s1, col_s2, col_s3 = st.columns(3)
     with col_s1:
         st.metric("조회 건수", f"{len(detail_df):,}건")
@@ -465,7 +470,8 @@ with tab2:
 
     st.markdown("")
 
-    # 표시 컬럼 선택
+    # 원본 데이터 테이블
+    st.markdown("#### 📋 원본 데이터")
     display_cols = ["date", "product_name", "client",
                     "large_category", "medium_category",
                     "net_sales", "net_qty", "return_quantity", "return_sales_amount"]
@@ -475,27 +481,42 @@ with tab2:
     available_cols = [c for c in display_cols if c in detail_df.columns]
     show_df = detail_df[available_cols].copy()
     show_df = show_df.rename(columns={
-        "date": "날짜",
-        "product_name": "상품명",
-        "client": "채널",
-        "large_category": "대분류",
-        "medium_category": "중분류",
-        "small_category": "소분류",
-        "net_sales": "순매출",
-        "net_qty": "순수량",
-        "return_quantity": "반품수량",
-        "return_sales_amount": "반품금액"
+        "date": "날짜", "product_name": "상품명", "client": "채널",
+        "large_category": "대분류", "medium_category": "중분류", "small_category": "소분류",
+        "net_sales": "순매출", "net_qty": "순수량",
+        "return_quantity": "반품수량", "return_sales_amount": "반품금액"
     })
     show_df["날짜"] = show_df["날짜"].dt.strftime("%Y-%m-%d")
 
     st.dataframe(
         show_df.sort_values("날짜", ascending=False),
-        use_container_width=True,
-        hide_index=True,
-        height=500
+        use_container_width=True, hide_index=True, height=400
     )
-
     st.caption(f"총 {len(show_df):,}행 표시 중")
+
+    st.markdown("---")
+
+    # 상품별 기간 합산
+    st.markdown("#### 📊 상품별 기간 합산")
+    sort_col_label = st.radio("정렬 기준", ["순매출", "판매수량"], horizontal=True)
+    sort_col = "순매출" if sort_col_label == "순매출" else "판매수량"
+
+    agg_df = detail_df.groupby("product_name").agg(
+        순매출=("net_sales", "sum"),
+        판매수량=("net_qty", "sum"),
+        주문건수=("order_no_1", "nunique"),
+        반품수량=("return_quantity", "sum"),
+        반품금액=("return_sales_amount", "sum")
+    ).reset_index()
+    agg_df = agg_df.rename(columns={"product_name": "상품명"})
+    agg_df = agg_df.sort_values(sort_col, ascending=False).reset_index(drop=True)
+    agg_df.index += 1  # 순위 1부터
+
+    agg_display = agg_df.copy()
+    agg_display["순매출"] = agg_display["순매출"].apply(lambda x: f"₩{x:,}")
+    agg_display["반품금액"] = agg_display["반품금액"].apply(lambda x: f"₩{x:,}")
+
+    st.dataframe(agg_display, use_container_width=True, height=400)
 
 st.markdown("---")
 st.caption("Dotus Dashboard · 데이터 기준: 제공된 엑셀 파일")
