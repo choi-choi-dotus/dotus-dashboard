@@ -688,7 +688,8 @@ elif page == "📦 재고소진일정":
         inv_wb = openpyxl.load_workbook(inv_file, read_only=True, data_only=True)
         ws_inv = inv_wb.active
         inv_rows = list(ws_inv.iter_rows(values_only=True))
-        inv_data = [r[:6] for r in inv_rows[1:] if r[0] is not None]
+        # 헤더가 2행인 경우 대비 → 첫 번째 셀이 문자열인 행만 데이터로 처리
+        inv_data = [r[:6] for r in inv_rows[1:] if r[0] is not None and not str(r[0]).strip() in ("", "품명", "상품명", "합계")]
         inv_df = pd.DataFrame(inv_data, columns=["상품명","product_id","대분류","중분류","소분류","재고수량"])
         inv_df["product_id"] = inv_df["product_id"].astype(str).str.strip()
         inv_df["재고수량"] = pd.to_numeric(inv_df["재고수량"], errors="coerce").fillna(0).astype(int)
@@ -704,18 +705,18 @@ elif page == "📦 재고소진일정":
 
         result["잔여일수"] = result.apply(calc_days, axis=1)
         result["소진예정일"] = result["잔여일수"].apply(
-            lambda d: (today + timedelta(days=int(d))).strftime("%Y-%m-%d") if d is not None else "-"
+            lambda d: (today + timedelta(days=int(d))).strftime("%Y-%m-%d") if pd.notna(d) else "-"
         )
         result["일평균결제수량_표시"] = result["일평균결제수량"].apply(
             lambda v: f"{v:.1f}개/일" if pd.notna(v) else "결제수량 없음"
         )
         result["잔여일수_표시"] = result["잔여일수"].apply(
-            lambda d: f"{d:,}일" if d is not None else "-"
+            lambda d: f"{int(d):,}일" if pd.notna(d) else "-"
         )
 
         # 상태 컬럼
         def get_status(row):
-            if row["잔여일수"] is None:
+            if pd.isna(row["잔여일수"]):
                 return "⬜ 결제수량 없음"
             d = row["잔여일수"]
             if d <= 7:
