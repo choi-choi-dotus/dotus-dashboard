@@ -603,12 +603,17 @@ with st.sidebar:
     for p in PAGES:
         is_active = st.session_state.current_page == p
         if is_active:
-            st.markdown('<div class="nav-active">', unsafe_allow_html=True)
-        if st.button(p, key=f"nav_{p}", use_container_width=True):
-            st.session_state.current_page = p
-            st.rerun()
-        if is_active:
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='background:#E3F2FD;border-left:3px solid {CYAN};
+                        border-radius:0 8px 8px 0;padding:10px 14px;
+                        margin-bottom:2px;color:{CYAN};font-weight:600;
+                        font-size:0.92rem;'>
+                {p}
+            </div>""", unsafe_allow_html=True)
+        else:
+            if st.button(p, key=f"nav_{p}", use_container_width=True):
+                st.session_state.current_page = p
+                st.rerun()
     st.markdown("---")
     st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
     if st.button("🚪 로그아웃", use_container_width=True):
