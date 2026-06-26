@@ -292,7 +292,7 @@ input[type="checkbox"]:checked + div {{
 """, unsafe_allow_html=True)
 
 # ── 비밀번호 ──────────────────────────────────────────────
-PASSWORD = "dotus2026"
+PASSWORD = st.secrets.get("PASSWORD", "dotus2026")
 
 def check_password():
     if "authenticated" not in st.session_state:
