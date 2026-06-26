@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import openpyxl
 from itertools import combinations
+from datetime import date, timedelta
 
 # ── 페이지 설정 ──────────────────────────────────────────
 st.set_page_config(
@@ -158,7 +159,6 @@ HAS_SMALL = "small_category" in df_sales.columns
 
 # ── 전체 선택 멀티셀렉트 헬퍼 ────────────────────────────
 def multiselect_with_all(label, options, key, **kwargs):
-    """'전체' 옵션이 포함된 멀티셀렉트. 전체 선택 시 '전체' 칩 하나만 표시."""
     ALL = "전체"
     choices = [ALL] + list(options)
     selected = st.multiselect(label, options=choices, default=[ALL], key=key, **kwargs)
@@ -172,7 +172,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "메뉴",
-        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문번호별 조회"],
+        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문번호별 조회", "📦 재고소진일정"],
         label_visibility="collapsed"
     )
     st.markdown("---")
@@ -188,7 +188,6 @@ if page == "📈 매출 대시보드":
     st.markdown("# 📈 매출 대시보드")
     st.markdown("---")
 
-    # ── 조회 조건 ─────────────────────────────────────────
     with st.expander("🔧 조회 조건", expanded=True):
         r1c1, r1c2, r1c3 = st.columns(3)
         with r1c1:
@@ -211,7 +210,6 @@ if page == "📈 매출 대시보드":
                 ]["small_category"].dropna().unique()
                 selected_small = multiselect_with_all("소분류", sorted(small_pool), key="p1_sm")
 
-    # 필터링
     filtered = df_sales[
         (df_sales["year_month"] >= month_start) &
         (df_sales["year_month"] <= month_end) &
@@ -247,7 +245,6 @@ if page == "📈 매출 대시보드":
     else:
         sales_d = qty_d = orders_d = None
 
-    # KPI
     k1,k2,k3,k4 = st.columns(4)
     with k1: st.metric("결제금액",      f"₩{total_sales/1e8:.1f}억",  delta=sales_d)
     with k2: st.metric("판매 수량",     f"{total_qty:,}개",            delta=qty_d)
@@ -255,7 +252,6 @@ if page == "📈 매출 대시보드":
     with k4: st.metric("평균 주문금액", f"₩{avg_order/1e4:.0f}만")
     st.markdown("---")
 
-    # 월별 매출 추이
     st.markdown("### 월별 결제금액 추이")
     sales_metric = st.radio("기준", ["금액 (억원)", "수량 (개)"], horizontal=True, key="sm1")
     monthly = filtered.groupby("year_month").agg(결제금액=("net_sales","sum"), 수량=("net_qty","sum")).reset_index()
@@ -282,7 +278,6 @@ if page == "📈 매출 대시보드":
     fig_sales.update_yaxes(title_text="MoM (%)", secondary_y=True, **AXIS)
     st.plotly_chart(fig_sales, use_container_width=True)
 
-    # 채널별 + 중분류
     cl, cr = st.columns(2)
     with cl:
         st.markdown("### 채널별 결제금액")
@@ -311,7 +306,6 @@ if page == "📈 매출 대시보드":
                               font=dict(color=TEXT2), margin=dict(t=20,b=20,l=10,r=10), showlegend=False)
         st.plotly_chart(fig_mid, use_container_width=True)
 
-    # 채널별 흐름
     st.markdown("### 채널별 월별 결제금액 흐름")
     ch_monthly = filtered.groupby(["year_month","client"])["net_sales"].sum().reset_index()
     top6 = ch_df.sort_values("결제금액", ascending=False).head(6)["client"].tolist()
@@ -331,7 +325,6 @@ if page == "📈 매출 대시보드":
     fig_multi.update_yaxes(title_text="억원", **AXIS)
     st.plotly_chart(fig_multi, use_container_width=True)
 
-    # 히트맵
     st.markdown("### 채널 × 월별 결제금액 히트맵")
     piv = filtered.groupby(["client","year_month"])["net_sales"].sum().reset_index()
     piv_t = piv.pivot(index="client", columns="year_month", values="net_sales").fillna(0)
@@ -349,7 +342,6 @@ if page == "📈 매출 대시보드":
 
     st.markdown("---")
 
-    # 매출 / 입고 나란히
     sv_opt = st.radio("매출 표시 기준", ["금액 (억원)", "수량 (개)"], horizontal=True, key="sv2")
     lc, rc = st.columns(2)
     CHART_H = 300
@@ -420,14 +412,22 @@ elif page == "🔍 상세 데이터 조회":
         for kw in keyword.strip().split():
             detail_df = detail_df[detail_df["product_name"].str.contains(kw, case=False, na=False)]
 
-    c1,c2,c3 = st.columns(3)
-    with c1: st.metric("조회 건수",    f"{len(detail_df):,}건")
-    with c2: st.metric("결제금액 합계", f"₩{detail_df['net_sales'].sum()/1e8:.2f}억")
-    with c3: st.metric("판매 수량",    f"{detail_df['net_qty'].sum():,}개")
+    # 조회 일수
+    days = (date_to - date_from).days + 1
+    total_sales_sum = detail_df["net_sales"].sum()
+    total_qty_sum   = detail_df["net_qty"].sum()
+    avg_qty_day     = total_qty_sum / days
+    avg_sales_day   = total_sales_sum / days
+
+    c1,c2,c3,c4,c5 = st.columns(5)
+    with c1: st.metric("조회 건수",      f"{len(detail_df):,}건")
+    with c2: st.metric("결제금액 합계",  f"₩{total_sales_sum/1e8:.2f}억")
+    with c3: st.metric("판매 수량",      f"{total_qty_sum:,}개")
+    with c4: st.metric("일평균 출고량",  f"{avg_qty_day:.1f}개")
+    with c5: st.metric("일평균 결제금액", f"₩{avg_sales_day/1e4:.0f}만")
 
     st.markdown("---")
 
-    # 스파크라인
     st.markdown("### 조회 기간 결제금액 흐름")
     spark = detail_df.groupby("year_month")["net_sales"].sum().reset_index().sort_values("year_month")
     if not spark.empty:
@@ -446,12 +446,8 @@ elif page == "🔍 상세 데이터 조회":
 
     st.markdown("---")
 
-    # 상품별 합산
     st.markdown("### 상품별 기간 합산")
     sort_by = st.radio("정렬 기준", ["결제금액", "판매수량"], horizontal=True)
-
-    # 조회 일수 계산
-    days = (date_to - date_from).days + 1
 
     agg = detail_df.groupby("product_name").agg(
         결제금액=("net_sales","sum"), 판매수량=("net_qty","sum"),
@@ -469,8 +465,6 @@ elif page == "🔍 상세 데이터 조회":
     disp["결제금액"]   = disp["결제금액"].apply(lambda x: f"₩{x:,}")
     disp["환불금액"]   = disp["환불금액"].apply(lambda x: f"₩{x:,}")
     disp["평균결제금액"] = disp["평균결제금액"].apply(lambda x: f"₩{x:,}")
-
-    # 컬럼 순서 정리
     disp = disp[["상품명","결제금액","판매수량","평균출고량","평균결제금액","주문건수","환불수량","환불금액"]]
     st.dataframe(disp, use_container_width=True, hide_index=False, height=480)
 
@@ -497,7 +491,6 @@ elif page == "🧾 주문번호별 조회":
         with o4:
             order_kw = st.text_input("주문번호 검색", placeholder="주문번호 일부만 입력해도 검색 가능")
 
-    # 필터
     ord_df = df_sales[
         (df_sales["date"].dt.date >= o_from) &
         (df_sales["date"].dt.date <= o_to) &
@@ -506,9 +499,7 @@ elif page == "🧾 주문번호별 조회":
     if order_kw.strip():
         ord_df = ord_df[ord_df["order_no_1"].astype(str).str.contains(order_kw.strip(), case=False, na=False)]
 
-    # ── 포장 분류 ─────────────────────────────────────────
     ord_df["order_no_1_str"] = ord_df["order_no_1"].astype(str).str.strip()
-
     unknown_mask = ord_df["order_no_1_str"].isin(["-", "", "nan", "None"])
     ord_known = ord_df[~unknown_mask].copy()
     ord_unknown = ord_df[unknown_mask].copy()
@@ -522,7 +513,6 @@ elif page == "🧾 주문번호별 조회":
     n_unknown = ord_unknown["order_no_1_str"].nunique()
     n_total   = n_single + n_multi + n_unknown
 
-    # KPI
     k1,k2,k3,k4 = st.columns(4)
     with k1: st.metric("전체 주문", f"{n_total:,}건")
     with k2: st.metric("단포장",   f"{n_single:,}건  ({n_single/n_total*100:.1f}%)" if n_total else "0건")
@@ -531,7 +521,6 @@ elif page == "🧾 주문번호별 조회":
 
     st.markdown("---")
 
-    # 도넛 차트
     cl_d, cr_d = st.columns([1, 2])
 
     with cl_d:
@@ -575,9 +564,7 @@ elif page == "🧾 주문번호별 조회":
 
     st.markdown("---")
 
-    # ── 합포장 상품 조합 분석 ─────────────────────────────
     st.markdown("### 합포장 상품 조합 분석")
-
     multi_df = ord_known[ord_known["order_no_1_str"].isin(multi_orders)].copy()
 
     @st.cache_data
@@ -626,6 +613,158 @@ elif page == "🧾 주문번호별 조회":
                 st.warning("검색 결과가 없습니다.")
         else:
             st.info("합포장 데이터가 없습니다.")
+
+# ════════════════════════════════════════════════════════
+# PAGE 4 : 재고소진일정
+# ════════════════════════════════════════════════════════
+elif page == "📦 재고소진일정":
+
+    st.markdown("# 📦 재고소진일정")
+    st.markdown("---")
+
+    today = date.today()
+
+    with st.expander("🔧 조회 조건", expanded=True):
+        ec1, ec2 = st.columns([3, 2])
+        with ec1:
+            preset = st.radio(
+                "일평균 계산 기간",
+                ["이번달", "지난달", "최근 30일", "최근 90일", "직접 입력"],
+                horizontal=True, key="inv_preset"
+            )
+        with ec2:
+            inv_file = st.file_uploader("재고파일 업로드 (.xlsx)", type=["xlsx"], key="inv_upload")
+
+        # 기간 계산
+        if preset == "이번달":
+            period_from = today.replace(day=1)
+            period_to   = today
+        elif preset == "지난달":
+            first_this  = today.replace(day=1)
+            period_to   = first_this - timedelta(days=1)
+            period_from = period_to.replace(day=1)
+        elif preset == "최근 30일":
+            period_from = today - timedelta(days=30)
+            period_to   = today
+        elif preset == "최근 90일":
+            period_from = today - timedelta(days=90)
+            period_to   = today
+        else:  # 직접 입력
+            dc1, dc2 = st.columns(2)
+            with dc1:
+                period_from = st.date_input("시작일", value=today - timedelta(days=30),
+                                            min_value=df_sales["date"].min().date(),
+                                            max_value=today, key="inv_from")
+            with dc2:
+                period_to = st.date_input("종료일", value=today,
+                                          min_value=df_sales["date"].min().date(),
+                                          max_value=today, key="inv_to")
+
+        st.caption(f"📅 일평균 계산 기간: {period_from} ~ {period_to}  ({(period_to - period_from).days + 1}일)")
+
+    # ── 일평균결제수량 계산 ───────────────────────────────
+    days_avg = (period_to - period_from).days + 1
+    sales_period = df_sales[
+        (df_sales["date"].dt.date >= period_from) &
+        (df_sales["date"].dt.date <= period_to)
+    ]
+    avg_by_pid = sales_period.groupby("product_id").agg(
+        판매수량합=("net_qty", "sum")
+    ).reset_index()
+    avg_by_pid["product_id"] = avg_by_pid["product_id"].astype(str).str.strip()
+    avg_by_pid["일평균결제수량"] = (avg_by_pid["판매수량합"] / days_avg).round(2)
+
+    # ── 재고파일 처리 ─────────────────────────────────────
+    if inv_file is None:
+        st.info("👆 재고파일(.xlsx)을 업로드하면 소진 일정이 표시됩니다.")
+        st.markdown(f"""
+        <div style='background:{CARD};border:1px dashed {BORDER};border-radius:8px;padding:20px;margin-top:12px;'>
+            <p style='color:{TEXT2};margin:0;font-size:0.9rem;'>
+            📋 업로드 파일 형식: <span style='color:{CYAN};'>상품명 / 품번 / 대분류 / 중분류 / 소분류 / 재고수량</span>
+            </p>
+        </div>""", unsafe_allow_html=True)
+    else:
+        # 파일 읽기
+        inv_wb = openpyxl.load_workbook(inv_file, read_only=True, data_only=True)
+        ws_inv = inv_wb.active
+        inv_rows = list(ws_inv.iter_rows(values_only=True))
+        inv_data = [r[:6] for r in inv_rows[1:] if r[0] is not None]
+        inv_df = pd.DataFrame(inv_data, columns=["상품명","product_id","대분류","중분류","소분류","재고수량"])
+        inv_df["product_id"] = inv_df["product_id"].astype(str).str.strip()
+        inv_df["재고수량"] = pd.to_numeric(inv_df["재고수량"], errors="coerce").fillna(0).astype(int)
+
+        # 매출 데이터와 조인
+        result = inv_df.merge(avg_by_pid[["product_id","일평균결제수량"]], on="product_id", how="left")
+
+        # 소진 계산
+        def calc_days(row):
+            if pd.isna(row["일평균결제수량"]) or row["일평균결제수량"] <= 0:
+                return None
+            return int(row["재고수량"] / row["일평균결제수량"])
+
+        result["잔여일수"] = result.apply(calc_days, axis=1)
+        result["소진예정일"] = result["잔여일수"].apply(
+            lambda d: (today + timedelta(days=int(d))).strftime("%Y-%m-%d") if d is not None else "-"
+        )
+        result["일평균결제수량_표시"] = result["일평균결제수량"].apply(
+            lambda v: f"{v:.1f}개/일" if pd.notna(v) else "결제수량 없음"
+        )
+        result["잔여일수_표시"] = result["잔여일수"].apply(
+            lambda d: f"{d:,}일" if d is not None else "-"
+        )
+
+        # 상태 컬럼
+        def get_status(row):
+            if row["잔여일수"] is None:
+                return "⬜ 결제수량 없음"
+            d = row["잔여일수"]
+            if d <= 7:
+                return "🔴 긴급"
+            elif d <= 30:
+                return "🟡 주의"
+            else:
+                return "🟢 여유"
+
+        result["상태"] = result.apply(get_status, axis=1)
+
+        # 정렬: 긴급→주의→여유→결제수량없음, 각 그룹 내 잔여일수 오름차순
+        status_order = {"🔴 긴급": 0, "🟡 주의": 1, "🟢 여유": 2, "⬜ 결제수량 없음": 3}
+        result["_sort"] = result["상태"].map(status_order)
+        result = result.sort_values(["_sort", "잔여일수"]).drop(columns="_sort").reset_index(drop=True)
+        result.index += 1
+
+        # ── 요약 스코어카드 ───────────────────────────────
+        n_urgent  = (result["상태"] == "🔴 긴급").sum()
+        n_caution = (result["상태"] == "🟡 주의").sum()
+        n_safe    = (result["상태"] == "🟢 여유").sum()
+        n_nodata  = (result["상태"] == "⬜ 결제수량 없음").sum()
+
+        k1,k2,k3,k4 = st.columns(4)
+        with k1: st.metric("🔴 긴급 (7일 이내)",   f"{n_urgent:,}개")
+        with k2: st.metric("🟡 주의 (30일 이내)",   f"{n_caution:,}개")
+        with k3: st.metric("🟢 여유 (30일 초과)",   f"{n_safe:,}개")
+        with k4: st.metric("⬜ 결제수량 없음",       f"{n_nodata:,}개")
+
+        st.markdown("---")
+
+        # ── 결과 테이블 ───────────────────────────────────
+        st.markdown(f"### 재고 소진 예정 현황  <span style='color:{TEXT2};font-size:0.85rem;'>전체 {len(result):,}개 품목</span>", unsafe_allow_html=True)
+
+        disp = result[["상품명","product_id","대분류","중분류","소분류","재고수량","일평균결제수량_표시","잔여일수_표시","소진예정일","상태"]].copy()
+        disp.columns = ["상품명","품번","대분류","중분류","소분류","재고수량","일평균결제수량","잔여일수","소진예정일","상태"]
+
+        st.dataframe(disp, use_container_width=True, hide_index=False, height=600)
+
+        # ── 긴급 품목 별도 강조 ───────────────────────────
+        urgent_df = result[result["상태"] == "🔴 긴급"]
+        if not urgent_df.empty:
+            st.markdown("---")
+            st.markdown(f"### 🔴 긴급 소진 임박 품목 ({n_urgent}개)")
+            urg_disp = urgent_df[["상품명","product_id","재고수량","일평균결제수량_표시","잔여일수_표시","소진예정일"]].copy()
+            urg_disp.columns = ["상품명","품번","재고수량","일평균결제수량","잔여일수","소진예정일"]
+            urg_disp = urg_disp.reset_index(drop=True)
+            urg_disp.index += 1
+            st.dataframe(urg_disp, use_container_width=True, hide_index=False)
 
 st.markdown("---")
 st.caption("Dotus Dashboard · 데이터 기준: 제공된 엑셀 파일")
