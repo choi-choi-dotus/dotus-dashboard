@@ -5,6 +5,7 @@ from plotly.subplots import make_subplots
 import openpyxl
 from itertools import combinations
 from datetime import date, timedelta
+import io
 
 # ── 페이지 설정 ──────────────────────────────────────────
 st.set_page_config(
@@ -634,6 +635,12 @@ elif page == "📦 재고소진일정":
             )
         with ec2:
             inv_file = st.file_uploader("재고파일 업로드 (.xlsx)", type=["xlsx"], key="inv_upload")
+            if inv_file is not None:
+                st.session_state["inv_bytes"] = inv_file.read()
+                st.session_state["inv_name"]  = inv_file.name
+                st.session_state["inv_time"]  = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+            if "inv_time" in st.session_state:
+                st.caption(f"📁 최근 업로드: {st.session_state['inv_name']}  |  {st.session_state['inv_time']}")
 
         # 기간 계산
         if preset == "이번달":
@@ -675,7 +682,10 @@ elif page == "📦 재고소진일정":
     avg_by_pid["일평균결제수량"] = (avg_by_pid["판매수량합"] / days_avg).round(2)
 
     # ── 재고파일 처리 ─────────────────────────────────────
-    if inv_file is None:
+    # 세션에 저장된 파일 또는 새 업로드 파일 사용
+    inv_bytes = st.session_state.get("inv_bytes", None)
+
+    if inv_bytes is None:
         st.info("👆 재고파일(.xlsx)을 업로드하면 소진 일정이 표시됩니다.")
         st.markdown(f"""
         <div style='background:{CARD};border:1px dashed {BORDER};border-radius:8px;padding:20px;margin-top:12px;'>
@@ -684,8 +694,8 @@ elif page == "📦 재고소진일정":
             </p>
         </div>""", unsafe_allow_html=True)
     else:
-        # 파일 읽기
-        inv_wb = openpyxl.load_workbook(inv_file, read_only=True, data_only=True)
+        # 파일 읽기 (세션 저장 바이트 사용)
+        inv_wb = openpyxl.load_workbook(io.BytesIO(inv_bytes), read_only=True, data_only=True)
         ws_inv = inv_wb.active
         inv_rows = list(ws_inv.iter_rows(values_only=True))
         # 헤더가 2행인 경우 대비 → 첫 번째 셀이 문자열인 행만 데이터로 처리
