@@ -173,7 +173,7 @@ with st.sidebar:
     st.markdown("---")
     page = st.radio(
         "메뉴",
-        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문번호 상세분석", "📦 재고소진일정"],
+        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정"],
         label_visibility="collapsed"
     )
     st.markdown("---")
@@ -470,7 +470,7 @@ elif page == "🔍 상세 데이터 조회":
     st.dataframe(disp, use_container_width=True, hide_index=False, height=480)
 
 # ════════════════════════════════════════════════════════
-# PAGE 3 : 주문번호별 조회
+# PAGE 3 : 주문 상세분석
 # ════════════════════════════════════════════════════════
 elif page == "🧾 주문 상세분석":
 
