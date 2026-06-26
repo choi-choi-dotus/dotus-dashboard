@@ -47,16 +47,17 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color: {TEXT2} !important; }}
 [data-testid="stSidebar"] h2 {{ color: {TEXT} !important; font-size:1rem !important; font-weight:600 !important; }}
-[data-testid="stSidebar"] .stRadio label {{
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
     padding: 10px 14px !important;
     border-radius: 8px !important;
     font-size: 0.92rem !important;
     font-weight: 500 !important;
     cursor: pointer !important;
-    display: block !important;
+    display: flex !important;
+    align-items: center !important;
     color: {TEXT2} !important;
+    margin-bottom: 4px !important;
 }}
-[data-testid="stSidebar"] .stRadio > div > label {{ display: none !important; }}
 p, span, label, div {{ color: {TEXT2}; }}
 h1, h2, h3, h4 {{ color: {TEXT} !important; }}
 hr {{ border-color: {BORDER} !important; }}
@@ -160,7 +161,7 @@ with st.sidebar:
     st.markdown("## 📊 Dotus")
     st.markdown("---")
     page = st.radio(
-        "menu",
+        "메뉴",
         ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문번호별 조회"],
         label_visibility="collapsed"
     )
