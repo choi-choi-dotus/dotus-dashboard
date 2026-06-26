@@ -195,6 +195,71 @@ span[data-baseweb="tag"] span {{ color:{CYAN} !important; }}
     border-left: 4px solid {CYAN} !important;
     color: {TEXT} !important;
 }}
+/* 상단 헤더 네비바 */
+header[data-testid="stHeader"] {{
+    background-color: {CARD} !important;
+    border-bottom: 1px solid {BORDER} !important;
+}}
+header[data-testid="stHeader"] * {{
+    color: {TEXT2} !important;
+}}
+/* 툴바 버튼들 */
+[data-testid="stToolbar"] {{
+    background-color: {CARD} !important;
+}}
+/* 라디오 버튼 원 */
+[data-testid="stRadio"] label span[data-testid="stMarkdownContainer"] ~ span,
+[data-testid="stSidebar"] input[type="radio"] + div {{
+    border-color: {BORDER} !important;
+    background-color: {CARD} !important;
+}}
+[data-testid="stSidebar"] input[type="radio"]:checked + div {{
+    background-color: {CYAN} !important;
+    border-color: {CYAN} !important;
+}}
+/* 셀렉박스 */
+[data-baseweb="select"] {{
+    background-color: {CARD} !important;
+}}
+[data-baseweb="select"] input {{
+    color: {TEXT} !important;
+}}
+/* 드롭다운 전체 */
+[data-baseweb="select"] > div:first-child {{
+    background-color: {CARD} !important;
+    border: 1px solid {BORDER} !important;
+}}
+/* 스크롤바 */
+::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+::-webkit-scrollbar-track {{ background: {BG}; }}
+::-webkit-scrollbar-thumb {{ background: {BORDER}; border-radius: 3px; }}
+::-webkit-scrollbar-thumb:hover {{ background: {TEXT2}; }}
+/* 데이터프레임 테이블 */
+[data-testid="stDataFrame"] > div {{
+    background-color: {CARD} !important;
+}}
+.stDataFrame iframe {{
+    color-scheme: light !important;
+}}
+[data-testid="stDataFrame"] [class*="dataframe"] {{
+    background-color: {CARD} !important;
+    color: {TEXT} !important;
+}}
+/* 체크박스 */
+[data-testid="stCheckbox"] label span[data-testid="stMarkdownContainer"] ~ span {{
+    background-color: {CARD} !important;
+    border: 2px solid {BORDER} !important;
+    border-radius: 4px !important;
+}}
+input[type="checkbox"]:checked + div {{
+    background-color: {CYAN} !important;
+    border-color: {CYAN} !important;
+}}
+/* 메트릭 델타 색상 */
+[data-testid="stMetricDeltaIcon-Up"] {{ color: #2E7D32 !important; }}
+[data-testid="stMetricDeltaIcon-Down"] {{ color: #C62828 !important; }}
+[data-testid="stMetric"] [data-testid="stMetricDelta"] [class*="positive"] {{ color: #2E7D32 !important; }}
+[data-testid="stMetric"] [data-testid="stMetricDelta"] [class*="negative"] {{ color: #C62828 !important; }}
 </style>
 """, unsafe_allow_html=True)
 
