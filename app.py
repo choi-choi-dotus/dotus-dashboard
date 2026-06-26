@@ -60,6 +60,19 @@ st.markdown(f"""
     align-items: center !important;
     color: {TEXT2} !important;
     margin-bottom: 4px !important;
+    transition: background 0.15s !important;
+}}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) {{
+    background-color: #E3F2FD !important;
+    color: {CYAN} !important;
+}}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) p,
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) span {{
+    color: {CYAN} !important;
+    font-weight: 600 !important;
+}}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {{
+    background-color: #F0F7FF !important;
 }}
 p, span, label, div {{ color: {TEXT2}; }}
 h1, h2, h3, h4 {{ color: {TEXT} !important; }}
