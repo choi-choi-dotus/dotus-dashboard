@@ -65,14 +65,24 @@ st.markdown(f"""
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) {{
     background-color: #E3F2FD !important;
     color: {CYAN} !important;
+    border-left: 3px solid {CYAN} !important;
 }}
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) p,
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) span {{
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) span,
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) div {{
     color: {CYAN} !important;
     font-weight: 600 !important;
 }}
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {{
     background-color: #F0F7FF !important;
+}}
+/* Streamlit 내부 선택 오버라이드 */
+[data-testid="stSidebar"] .stRadio [data-baseweb="radio"] > div:first-child {{
+    background-color: transparent !important;
+    border-color: {CYAN} !important;
+}}
+[data-testid="stSidebar"] .stRadio input:checked ~ div {{
+    background-color: {CYAN} !important;
 }}
 p, span, label, div {{ color: {TEXT2}; }}
 h1, h2, h3, h4 {{ color: {TEXT} !important; }}
