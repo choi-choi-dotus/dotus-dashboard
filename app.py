@@ -516,8 +516,8 @@ elif page == "🧾 주문 상세분석":
 
     k1,k2,k3,k4 = st.columns(4)
     with k1: st.metric("전체 주문", f"{n_total:,}건")
-    with k2: st.metric("단포장",   f"{n_single:,}건  ({n_single/n_total*100:.1f}%)" if n_total else "0건")
-    with k3: st.metric("합포장",   f"{n_multi:,}건  ({n_multi/n_total*100:.1f}%)"  if n_total else "0건")
+    with k2: st.metric("단수구매",   f"{n_single:,}건  ({n_single/n_total*100:.1f}%)" if n_total else "0건")
+    with k3: st.metric("복수구매",   f"{n_multi:,}건  ({n_multi/n_total*100:.1f}%)"  if n_total else "0건")
     with k4: st.metric("미확인",   f"{n_unknown:,}건")
 
     st.markdown("---")
@@ -528,7 +528,7 @@ elif page == "🧾 주문 상세분석":
         st.markdown("### 포장 유형 비율")
         fig_donut = go.Figure(go.Pie(
             values=[n_single, n_multi, n_unknown],
-            labels=["단포장", "합포장", "미확인"],
+            labels=["단수구매", "복수구매", "미확인"],
             marker=dict(colors=[CYAN, GOLD, TEXT2], line=dict(color=BG, width=2)),
             textinfo="percent+label", textfont=dict(size=13, color=BG),
             hole=0.5
@@ -543,14 +543,14 @@ elif page == "🧾 주문 상세분석":
         st.plotly_chart(fig_donut, use_container_width=True)
 
     with cr_d:
-        st.markdown("### 월별 단포장 / 합포장 추이")
+        st.markdown("### 월별 단수구매 / 복수구매 추이")
         ord_known2 = ord_known.copy()
-        ord_known2["pack_type"] = ord_known2["order_no_1_str"].isin(multi_orders).map({True:"합포장", False:"단포장"})
+        ord_known2["pack_type"] = ord_known2["order_no_1_str"].isin(multi_orders).map({True:"복수구매", False:"단수구매"})
         pack_monthly = ord_known2.groupby(["year_month","pack_type"])["order_no_1_str"].nunique().reset_index()
         pack_monthly.columns = ["year_month","pack_type","건수"]
 
         fig_pack = go.Figure()
-        for pt, color in [("단포장", CYAN), ("합포장", GOLD)]:
+        for pt, color in [("단수구매", CYAN), ("복수구매", GOLD)]:
             df_pt = pack_monthly[pack_monthly["pack_type"]==pt]
             fig_pack.add_trace(go.Scatter(
                 x=df_pt["year_month"], y=df_pt["건수"], name=pt,
@@ -565,11 +565,11 @@ elif page == "🧾 주문 상세분석":
 
     st.markdown("---")
 
-    st.markdown("### 합포장 상품 조합 분석")
+    st.markdown("### 복수구매 상품 조합 분석")
     multi_df = ord_known[ord_known["order_no_1_str"].isin(multi_orders)].copy()
 
     if multi_df.empty:
-        st.info("합포장 데이터가 없습니다.")
+        st.info("복수구매 데이터가 없습니다.")
     else:
         all_products = sorted(multi_df["product_name"].dropna().unique().tolist())
         search_kw = st.text_input("상품명 검색", placeholder="예: 오딧 캐리어", key="prod_search")
