@@ -167,13 +167,142 @@ def multiselect_with_all(label, options, key, **kwargs):
         return list(options)
     return selected
 
+# ── 챗봇 답변 함수 ───────────────────────────────────────
+def answer_question(q, df, today):
+    import re
+    q_orig  = q.strip()
+    q_lower = q_orig.lower()
+
+    # ── 날짜 추출 ─────────────────────────────────────────
+    date_filter  = None
+    period_label = None
+
+    # N월 M일
+    m = re.search(r'(\d+)월\s*(\d+)일', q_orig)
+    if m:
+        try:
+            d = date(today.year, int(m.group(1)), int(m.group(2)))
+            date_filter  = (d, d)
+            period_label = f"{today.year}년 {m.group(1)}월 {m.group(2)}일"
+        except: pass
+
+    # N월 (단독)
+    if not date_filter:
+        m = re.search(r'(\d+)월(?!\s*\d+일)', q_orig)
+        if m:
+            mo = int(m.group(1))
+            try:
+                first = date(today.year, mo, 1)
+                last  = date(today.year, mo+1, 1) - timedelta(days=1) if mo < 12 else date(today.year, 12, 31)
+                date_filter  = (first, last)
+                period_label = f"{today.year}년 {mo}월"
+            except: pass
+
+    if not date_filter and '오늘' in q_orig:
+        date_filter = (today, today); period_label = "오늘"
+
+    if not date_filter and '이번달' in q_orig:
+        date_filter = (today.replace(day=1), today); period_label = "이번달"
+
+    if not date_filter and '지난달' in q_orig:
+        ft = today.replace(day=1)
+        lp = ft - timedelta(days=1)
+        date_filter = (lp.replace(day=1), lp); period_label = "지난달"
+
+    if not date_filter:
+        m = re.search(r'최근\s*(\d+)일', q_orig)
+        if m:
+            n = int(m.group(1))
+            date_filter = (today - timedelta(days=n), today); period_label = f"최근 {n}일"
+
+    # ── 데이터 필터 ────────────────────────────────────────
+    filtered = df.copy()
+    if date_filter:
+        filtered = filtered[
+            (filtered["date"].dt.date >= date_filter[0]) &
+            (filtered["date"].dt.date <= date_filter[1])
+        ]
+    period_label = period_label or "전체 기간"
+
+    # 채널 필터
+    sel_client = None
+    for c in sorted(df["client"].unique(), key=len, reverse=True):
+        if c in q_orig:
+            sel_client = c
+            filtered = filtered[filtered["client"] == c]
+            break
+
+    # 상품 필터
+    sel_product = None
+    for p in sorted(df["product_name"].dropna().unique(), key=len, reverse=True):
+        if p in q_orig:
+            sel_product = p
+            filtered = filtered[filtered["product_name"] == p]
+            break
+
+    ctx = ""
+    if sel_client:  ctx += f"  [{sel_client}]"
+    if sel_product: ctx += f"  [{sel_product}]"
+    header = f"**{period_label}{ctx}**"
+
+    if filtered.empty:
+        return f"{header}\n\n해당 기간/조건에 데이터가 없습니다."
+
+    # ── TOP N 숫자 추출 ───────────────────────────────────
+    n_top = 5
+    m = re.search(r'(?:top|상위|최고)\s*(\d+)|(\d+)(?:개|위)\s*(?:순위|랭킹)', q_lower)
+    if m:
+        for g in m.groups():
+            if g: n_top = int(g); break
+
+    # ── 채널별 ────────────────────────────────────────────
+    if '채널별' in q_orig or '채널 별' in q_orig:
+        agg = filtered.groupby("client").agg(
+            결제금액=("net_sales","sum"), 수량=("net_qty","sum")
+        ).sort_values("결제금액", ascending=False).reset_index()
+        lines = [f"📊 {header} 채널별 결제금액\n"]
+        for i, row in agg.iterrows():
+            lines.append(f"{i+1}. {row['client']}: ₩{row['결제금액']/1e8:.2f}억 ({row['수량']:,}개)")
+        return "\n".join(lines)
+
+    # ── 상품 순위 ─────────────────────────────────────────
+    rank_kw = ['순위','top','랭킹','많이 팔','잘 나가','상위','베스트']
+    if any(k in q_lower for k in rank_kw) and not sel_product:
+        by_qty = any(k in q_lower for k in ['수량','개수'])
+        col    = "net_qty" if by_qty else "net_sales"
+        lbl    = "판매수량" if by_qty else "결제금액"
+        agg    = filtered.groupby("product_name")[col].sum().sort_values(ascending=False).head(n_top).reset_index()
+        lines  = [f"🏆 {header} 상품 {lbl} TOP {n_top}\n"]
+        for i, row in agg.iterrows():
+            val = f"{row[col]:,}개" if by_qty else f"₩{row[col]/1e4:.0f}만"
+            lines.append(f"{i+1}. {row['product_name']}: {val}")
+        return "\n".join(lines)
+
+    # ── 수량 ──────────────────────────────────────────────
+    if any(k in q_lower for k in ['수량','몇개','몇 개','판매량','출고']):
+        total = filtered["net_qty"].sum()
+        return f"📦 {header} 판매수량\n\n**{total:,}개**"
+
+    # ── 주문건수 ──────────────────────────────────────────
+    if any(k in q_lower for k in ['주문','건수','몇건','몇 건']):
+        total = filtered["order_no_1"].nunique()
+        return f"🧾 {header} 주문건수\n\n**{total:,}건**"
+
+    # ── 기본 = 결제금액 ───────────────────────────────────
+    sales  = filtered["net_sales"].sum()
+    qty    = filtered["net_qty"].sum()
+    orders = filtered["order_no_1"].nunique()
+    return (f"💰 {header} 결제금액\n\n"
+            f"**₩{sales/1e8:.2f}억**\n\n"
+            f"판매수량 {qty:,}개  ·  주문건수 {orders:,}건")
+
 # ── 사이드바 메뉴 ─────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📊 Dotus")
     st.markdown("---")
     page = st.radio(
         "메뉴",
-        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정"],
+        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정", "💬 챗봇"],
         label_visibility="collapsed"
     )
     st.markdown("---")
@@ -853,6 +982,52 @@ elif page == "📦 재고소진일정":
             urg_disp = urg_disp.reset_index(drop=True)
             urg_disp.index += 1
             st.dataframe(urg_disp, use_container_width=True, hide_index=False)
+
+# ════════════════════════════════════════════════════════
+# PAGE 5 : 챗봇
+# ════════════════════════════════════════════════════════
+elif page == "💬 챗봇":
+
+    st.markdown("# 💬 데이터 챗봇")
+    st.markdown("---")
+
+    # 예시 질문 힌트
+    st.markdown(f"""
+    <div style='background:{CARD};border:1px solid {BORDER};border-radius:8px;padding:16px 20px;margin-bottom:20px;'>
+        <p style='color:{TEXT2};font-size:0.85rem;margin:0 0 8px 0;'>💡 <b style='color:{TEXT};'>이런 질문을 해보세요</b></p>
+        <div style='display:flex;flex-wrap:wrap;gap:8px;'>
+            {"".join([f"<span style='background:#0e3a50;color:{CYAN};padding:4px 12px;border-radius:20px;font-size:0.82rem;'>{ex}</span>"
+                      for ex in ["6월 21일 매출 얼마야?","이번달 판매수량 알려줘","지난달 채널별 결제금액","최근 30일 주문건수",
+                                 "5월 상품 순위 TOP 5","오늘 매출","이번달 채월별 매출"]])}
+        </div>
+    </div>""", unsafe_allow_html=True)
+
+    # 채팅 기록 초기화
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    # 대화 표시
+    for msg in st.session_state.chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # 입력창
+    if prompt := st.chat_input("질문을 입력하세요. 예: 6월 매출 얼마야?"):
+        st.session_state.chat_history.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        answer = answer_question(prompt, df_sales, date.today())
+        st.session_state.chat_history.append({"role": "assistant", "content": answer})
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+
+    # 초기화 버튼
+    if st.session_state.chat_history:
+        st.markdown("")
+        if st.button("🗑️ 대화 초기화"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 st.markdown("---")
 st.caption("Dotus Dashboard · 데이터 기준: 제공된 엑셀 파일")
