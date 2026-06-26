@@ -156,6 +156,16 @@ def load_data():
 df_sales, df_stock, df_master = load_data()
 HAS_SMALL = "small_category" in df_sales.columns
 
+# ── 전체 선택 멀티셀렉트 헬퍼 ────────────────────────────
+def multiselect_with_all(label, options, key, **kwargs):
+    """'전체' 옵션이 포함된 멀티셀렉트. 전체 선택 시 '전체' 칩 하나만 표시."""
+    ALL = "전체"
+    choices = [ALL] + list(options)
+    selected = st.multiselect(label, options=choices, default=[ALL], key=key, **kwargs)
+    if not selected or ALL in selected:
+        return list(options)
+    return selected
+
 # ── 사이드바 메뉴 ─────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📊 Dotus")
@@ -187,19 +197,19 @@ if page == "📈 매출 대시보드":
             month_end   = st.selectbox("종료 월", months, index=len(months)-1)
         with r1c2:
             all_clients = sorted(df_sales["client"].unique())
-            selected_clients = st.multiselect("채널", options=all_clients, default=all_clients)
+            selected_clients = multiselect_with_all("채널", all_clients, key="p1_ch")
         with r1c3:
             all_large = sorted(df_sales["large_category"].dropna().unique())
-            selected_large = st.multiselect("대분류", options=all_large, default=all_large)
+            selected_large = multiselect_with_all("대분류", all_large, key="p1_lg")
             mid_pool = df_sales[df_sales["large_category"].isin(selected_large)]["medium_category"].dropna().unique()
-            selected_medium = st.multiselect("중분류", options=sorted(mid_pool), default=sorted(mid_pool))
+            selected_medium = multiselect_with_all("중분류", sorted(mid_pool), key="p1_md")
             selected_small = None
             if HAS_SMALL:
                 small_pool = df_sales[
                     df_sales["large_category"].isin(selected_large) &
                     df_sales["medium_category"].isin(selected_medium)
                 ]["small_category"].dropna().unique()
-                selected_small = st.multiselect("소분류", options=sorted(small_pool), default=sorted(small_pool))
+                selected_small = multiselect_with_all("소분류", sorted(small_pool), key="p1_sm")
 
     # 필터링
     filtered = df_sales[
@@ -239,24 +249,24 @@ if page == "📈 매출 대시보드":
 
     # KPI
     k1,k2,k3,k4 = st.columns(4)
-    with k1: st.metric("순매출",       f"₩{total_sales/1e8:.1f}억",  delta=sales_d)
-    with k2: st.metric("판매 수량",    f"{total_qty:,}개",            delta=qty_d)
-    with k3: st.metric("주문 건수",    f"{total_orders:,}건",         delta=orders_d)
+    with k1: st.metric("결제금액",      f"₩{total_sales/1e8:.1f}억",  delta=sales_d)
+    with k2: st.metric("판매 수량",     f"{total_qty:,}개",            delta=qty_d)
+    with k3: st.metric("주문 건수",     f"{total_orders:,}건",         delta=orders_d)
     with k4: st.metric("평균 주문금액", f"₩{avg_order/1e4:.0f}만")
     st.markdown("---")
 
     # 월별 매출 추이
-    st.markdown("### 월별 매출 추이")
+    st.markdown("### 월별 결제금액 추이")
     sales_metric = st.radio("기준", ["금액 (억원)", "수량 (개)"], horizontal=True, key="sm1")
-    monthly = filtered.groupby("year_month").agg(순매출=("net_sales","sum"), 수량=("net_qty","sum")).reset_index()
+    monthly = filtered.groupby("year_month").agg(결제금액=("net_sales","sum"), 수량=("net_qty","sum")).reset_index()
     use_m = (sales_metric == "금액 (억원)")
-    y_v   = monthly["순매출"]/1e8 if use_m else monthly["수량"]
+    y_v   = monthly["결제금액"]/1e8 if use_m else monthly["수량"]
     y_fmt = [f"₩{v:.1f}억" for v in y_v] if use_m else [f"{v:,}개" for v in y_v]
     monthly["MoM"] = y_v.pct_change() * 100
 
     fig_sales = make_subplots(specs=[[{"secondary_y": True}]])
     fig_sales.add_trace(go.Scatter(
-        x=monthly["year_month"], y=y_v, name="매출",
+        x=monthly["year_month"], y=y_v, name="결제금액",
         mode="lines+markers", line=dict(color=CYAN, width=3, shape="spline"),
         marker=dict(size=7, color=CYAN), fill="tozeroy", fillcolor="rgba(0,188,212,0.12)",
         text=y_fmt, hovertemplate="%{text}<extra></extra>"
@@ -275,12 +285,12 @@ if page == "📈 매출 대시보드":
     # 채널별 + 중분류
     cl, cr = st.columns(2)
     with cl:
-        st.markdown("### 채널별 매출")
-        ch_df = filtered.groupby("client").agg(순매출=("net_sales","sum")).sort_values("순매출", ascending=True).reset_index()
+        st.markdown("### 채널별 결제금액")
+        ch_df = filtered.groupby("client").agg(결제금액=("net_sales","sum")).sort_values("결제금액", ascending=True).reset_index()
         fig_ch = go.Figure(go.Bar(
-            x=ch_df["순매출"]/1e8, y=ch_df["client"], orientation="h",
-            marker=dict(color=ch_df["순매출"], colorscale=[[0,CARD2],[1,CYAN]], showscale=False),
-            text=[f"₩{v/1e8:.1f}억" for v in ch_df["순매출"]],
+            x=ch_df["결제금액"]/1e8, y=ch_df["client"], orientation="h",
+            marker=dict(color=ch_df["결제금액"], colorscale=[[0,CARD2],[1,CYAN]], showscale=False),
+            text=[f"₩{v/1e8:.1f}억" for v in ch_df["결제금액"]],
             textposition="outside", textfont=dict(color=TEXT2)
         ))
         fig_ch.update_layout(height=380, **nl(margin=dict(t=20,b=20,l=10,r=80)))
@@ -289,10 +299,10 @@ if page == "📈 매출 대시보드":
         st.plotly_chart(fig_ch, use_container_width=True)
 
     with cr:
-        st.markdown("### 상품 중분류별 매출")
-        mid_df = filtered.groupby("medium_category").agg(순매출=("net_sales","sum")).sort_values("순매출", ascending=False).head(10).reset_index()
+        st.markdown("### 상품 중분류별 결제금액")
+        mid_df = filtered.groupby("medium_category").agg(결제금액=("net_sales","sum")).sort_values("결제금액", ascending=False).head(10).reset_index()
         fig_mid = go.Figure(go.Pie(
-            values=mid_df["순매출"], labels=mid_df["medium_category"],
+            values=mid_df["결제금액"], labels=mid_df["medium_category"],
             marker=dict(colors=PIE_COLORS, line=dict(color=BG, width=2)),
             textposition="inside", textinfo="percent+label",
             textfont=dict(size=11, color=BG), hole=0.4
@@ -302,9 +312,9 @@ if page == "📈 매출 대시보드":
         st.plotly_chart(fig_mid, use_container_width=True)
 
     # 채널별 흐름
-    st.markdown("### 채널별 월별 매출 흐름")
+    st.markdown("### 채널별 월별 결제금액 흐름")
     ch_monthly = filtered.groupby(["year_month","client"])["net_sales"].sum().reset_index()
-    top6 = ch_df.sort_values("순매출", ascending=False).head(6)["client"].tolist()
+    top6 = ch_df.sort_values("결제금액", ascending=False).head(6)["client"].tolist()
     fig_multi = go.Figure()
     for i, client in enumerate(top6):
         df_c = ch_monthly[ch_monthly["client"]==client]
@@ -322,7 +332,7 @@ if page == "📈 매출 대시보드":
     st.plotly_chart(fig_multi, use_container_width=True)
 
     # 히트맵
-    st.markdown("### 채널 × 월별 매출 히트맵")
+    st.markdown("### 채널 × 월별 결제금액 히트맵")
     piv = filtered.groupby(["client","year_month"])["net_sales"].sum().reset_index()
     piv_t = piv.pivot(index="client", columns="year_month", values="net_sales").fillna(0)
     fig_heat = go.Figure(go.Heatmap(
@@ -345,10 +355,10 @@ if page == "📈 매출 대시보드":
     CHART_H = 300
 
     with lc:
-        st.markdown("### 월별 매출")
-        sm2 = filtered.groupby("year_month").agg(순매출=("net_sales","sum"), 수량=("net_qty","sum")).reset_index()
+        st.markdown("### 월별 결제금액")
+        sm2 = filtered.groupby("year_month").agg(결제금액=("net_sales","sum"), 수량=("net_qty","sum")).reset_index()
         use_m2 = (sv_opt == "금액 (억원)")
-        sv_y  = sm2["순매출"]/1e8 if use_m2 else sm2["수량"]
+        sv_y  = sm2["결제금액"]/1e8 if use_m2 else sm2["수량"]
         sv_fmt= [f"₩{v:.1f}억" for v in sv_y] if use_m2 else [f"{v:,}개" for v in sv_y]
         fig_sv = go.Figure(go.Scatter(
             x=sm2["year_month"], y=sv_y, mode="lines+markers",
@@ -398,8 +408,7 @@ elif page == "🔍 상세 데이터 조회":
                                     min_value=df_sales["date"].min().date(),
                                     max_value=df_sales["date"].max().date())
         with d3:
-            det_clients = st.multiselect("채널", options=sorted(df_sales["client"].unique()),
-                                         default=sorted(df_sales["client"].unique()), key="det_ch")
+            det_clients = multiselect_with_all("채널", sorted(df_sales["client"].unique()), key="det_ch")
         keyword = st.text_input("상품명 검색", placeholder="예: 오딧  →  오딧 캐리어, 오딧백 등 모두 검색")
 
     detail_df = df_sales[
@@ -412,14 +421,14 @@ elif page == "🔍 상세 데이터 조회":
             detail_df = detail_df[detail_df["product_name"].str.contains(kw, case=False, na=False)]
 
     c1,c2,c3 = st.columns(3)
-    with c1: st.metric("조회 건수",   f"{len(detail_df):,}건")
-    with c2: st.metric("순매출 합계", f"₩{detail_df['net_sales'].sum()/1e8:.2f}억")
-    with c3: st.metric("판매 수량",   f"{detail_df['net_qty'].sum():,}개")
+    with c1: st.metric("조회 건수",    f"{len(detail_df):,}건")
+    with c2: st.metric("결제금액 합계", f"₩{detail_df['net_sales'].sum()/1e8:.2f}억")
+    with c3: st.metric("판매 수량",    f"{detail_df['net_qty'].sum():,}개")
 
     st.markdown("---")
 
     # 스파크라인
-    st.markdown("### 조회 기간 매출 흐름")
+    st.markdown("### 조회 기간 결제금액 흐름")
     spark = detail_df.groupby("year_month")["net_sales"].sum().reset_index().sort_values("year_month")
     if not spark.empty:
         fig_sp = go.Figure(go.Scatter(
@@ -439,17 +448,30 @@ elif page == "🔍 상세 데이터 조회":
 
     # 상품별 합산
     st.markdown("### 상품별 기간 합산")
-    sort_by = st.radio("정렬 기준", ["순매출", "판매수량"], horizontal=True)
+    sort_by = st.radio("정렬 기준", ["결제금액", "판매수량"], horizontal=True)
+
+    # 조회 일수 계산
+    days = (date_to - date_from).days + 1
+
     agg = detail_df.groupby("product_name").agg(
-        순매출=("net_sales","sum"), 판매수량=("net_qty","sum"),
+        결제금액=("net_sales","sum"), 판매수량=("net_qty","sum"),
         주문건수=("order_no_1","nunique"), 환불수량=("return_quantity","sum"),
         환불금액=("return_sales_amount","sum")
     ).reset_index().rename(columns={"product_name":"상품명"})
+
+    agg["평균출고량"]   = (agg["판매수량"] / days).round(1)
+    agg["평균결제금액"] = (agg["결제금액"] / days).round(0).astype(int)
+
     agg = agg.sort_values(sort_by, ascending=False).reset_index(drop=True)
     agg.index += 1
+
     disp = agg.copy()
-    disp["순매출"]  = disp["순매출"].apply(lambda x: f"₩{x:,}")
-    disp["환불금액"] = disp["환불금액"].apply(lambda x: f"₩{x:,}")
+    disp["결제금액"]   = disp["결제금액"].apply(lambda x: f"₩{x:,}")
+    disp["환불금액"]   = disp["환불금액"].apply(lambda x: f"₩{x:,}")
+    disp["평균결제금액"] = disp["평균결제금액"].apply(lambda x: f"₩{x:,}")
+
+    # 컬럼 순서 정리
+    disp = disp[["상품명","결제금액","판매수량","평균출고량","평균결제금액","주문건수","환불수량","환불금액"]]
     st.dataframe(disp, use_container_width=True, hide_index=False, height=480)
 
 # ════════════════════════════════════════════════════════
@@ -471,8 +493,7 @@ elif page == "🧾 주문번호별 조회":
                                  min_value=df_sales["date"].min().date(),
                                  max_value=df_sales["date"].max().date(), key="o_to")
         with o3:
-            o_clients = st.multiselect("채널", options=sorted(df_sales["client"].unique()),
-                                       default=sorted(df_sales["client"].unique()), key="o_ch")
+            o_clients = multiselect_with_all("채널", sorted(df_sales["client"].unique()), key="o_ch")
         with o4:
             order_kw = st.text_input("주문번호 검색", placeholder="주문번호 일부만 입력해도 검색 가능")
 
@@ -486,15 +507,12 @@ elif page == "🧾 주문번호별 조회":
         ord_df = ord_df[ord_df["order_no_1"].astype(str).str.contains(order_kw.strip(), case=False, na=False)]
 
     # ── 포장 분류 ─────────────────────────────────────────
-    # order_no_1 기준으로 건수 계산
     ord_df["order_no_1_str"] = ord_df["order_no_1"].astype(str).str.strip()
 
-    # 미확인: order_no_1이 "-" 또는 빈값
     unknown_mask = ord_df["order_no_1_str"].isin(["-", "", "nan", "None"])
     ord_known = ord_df[~unknown_mask].copy()
     ord_unknown = ord_df[unknown_mask].copy()
 
-    # order_no_1별 행 수 계산
     cnt_per_order = ord_known.groupby("order_no_1_str").size().reset_index(name="item_count")
     single_orders = cnt_per_order[cnt_per_order["item_count"] == 1]["order_no_1_str"]
     multi_orders  = cnt_per_order[cnt_per_order["item_count"] >= 2]["order_no_1_str"]
@@ -506,10 +524,10 @@ elif page == "🧾 주문번호별 조회":
 
     # KPI
     k1,k2,k3,k4 = st.columns(4)
-    with k1: st.metric("전체 주문",  f"{n_total:,}건")
-    with k2: st.metric("단포장",    f"{n_single:,}건  ({n_single/n_total*100:.1f}%)" if n_total else "0건")
-    with k3: st.metric("합포장",    f"{n_multi:,}건  ({n_multi/n_total*100:.1f}%)"  if n_total else "0건")
-    with k4: st.metric("미확인",    f"{n_unknown:,}건")
+    with k1: st.metric("전체 주문", f"{n_total:,}건")
+    with k2: st.metric("단포장",   f"{n_single:,}건  ({n_single/n_total*100:.1f}%)" if n_total else "0건")
+    with k3: st.metric("합포장",   f"{n_multi:,}건  ({n_multi/n_total*100:.1f}%)"  if n_total else "0건")
+    with k4: st.metric("미확인",   f"{n_unknown:,}건")
 
     st.markdown("---")
 
@@ -562,7 +580,6 @@ elif page == "🧾 주문번호별 조회":
 
     multi_df = ord_known[ord_known["order_no_1_str"].isin(multi_orders)].copy()
 
-    # 조합 빈도 계산
     @st.cache_data
     def calc_combos(df_input):
         combo_counts = {}
@@ -590,17 +607,23 @@ elif page == "🧾 주문번호별 조회":
     with tab_b:
         if not multi_df.empty:
             all_products = sorted(multi_df["product_name"].dropna().unique().tolist())
-            sel_product = st.selectbox("상품 선택", options=all_products)
-            paired = combo_df[
-                (combo_df["상품 A"] == sel_product) | (combo_df["상품 B"] == sel_product)
-            ].copy()
-            paired["함께 합포된 상품"] = paired.apply(
-                lambda r: r["상품 B"] if r["상품 A"] == sel_product else r["상품 A"], axis=1
-            )
-            paired = paired[["함께 합포된 상품","합포 건수"]].reset_index(drop=True)
-            paired.index += 1
-            st.markdown(f"**{sel_product}** 와(과) 함께 합포된 상품 순위")
-            st.dataframe(paired, use_container_width=True, hide_index=False, height=450)
+            search_kw = st.text_input("상품명 검색", placeholder="예: 오딧 캐리어", key="prod_search")
+            filtered_products = [p for p in all_products if search_kw.strip().lower() in p.lower()] if search_kw.strip() else all_products
+
+            if filtered_products:
+                sel_product = st.selectbox("상품 선택", options=filtered_products, key="prod_select")
+                paired = combo_df[
+                    (combo_df["상품 A"] == sel_product) | (combo_df["상품 B"] == sel_product)
+                ].copy()
+                paired["함께 합포된 상품"] = paired.apply(
+                    lambda r: r["상품 B"] if r["상품 A"] == sel_product else r["상품 A"], axis=1
+                )
+                paired = paired[["함께 합포된 상품","합포 건수"]].reset_index(drop=True)
+                paired.index += 1
+                st.markdown(f"**{sel_product}** 와(과) 함께 합포된 상품 순위")
+                st.dataframe(paired, use_container_width=True, hide_index=False, height=450)
+            else:
+                st.warning("검색 결과가 없습니다.")
         else:
             st.info("합포장 데이터가 없습니다.")
 
