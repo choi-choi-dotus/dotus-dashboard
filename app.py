@@ -16,19 +16,19 @@ st.set_page_config(
 )
 
 # ── 색상 ─────────────────────────────────────────────────
-BG      = "#0d1b2a"
-CARD    = "#132337"
-CARD2   = "#1a2f45"
-BORDER  = "#1e3a5f"
-CYAN    = "#00BCD4"
-CYAN2   = "#4DD0E1"
-GOLD    = "#FFC107"
-TEXT    = "#E0F7FA"
-TEXT2   = "#90A4AE"
+BG      = "#F4F6F9"
+CARD    = "#FFFFFF"
+CARD2   = "#EEF2F7"
+BORDER  = "#D8DEE9"
+CYAN    = "#1565C0"
+CYAN2   = "#42A5F5"
+GOLD    = "#F57C00"
+TEXT    = "#1A2332"
+TEXT2   = "#546E7A"
 
-CHART_COLORS = [CYAN, "#FFC107", "#FF6B6B", "#AB47BC", "#66BB6A", "#FF9800"]
-PIE_COLORS   = [CYAN, CYAN2, "#0097A7", "#00838F", "#006064",
-                "#80DEEA", "#B2EBF2", "#E0F7FA", "#4DD0E1", "#26C6DA"]
+CHART_COLORS = ["#1565C0", "#2E7D32", "#F57C00", "#C62828", "#6A1B9A", "#00838F"]
+PIE_COLORS   = ["#1565C0", "#1976D2", "#1E88E5", "#2196F3", "#42A5F5",
+                "#64B5F6", "#90CAF9", "#0D47A1", "#0288D1", "#0097A7"]
 
 def nl(**kwargs):
     base = dict(plot_bgcolor=CARD, paper_bgcolor=CARD,
@@ -36,7 +36,7 @@ def nl(**kwargs):
     base.update(kwargs)
     return base
 
-AXIS = dict(gridcolor=CARD2, linecolor=BORDER, tickcolor=BORDER, tickfont=dict(color=TEXT2))
+AXIS = dict(gridcolor="#E8ECF0", linecolor=BORDER, tickcolor=BORDER, tickfont=dict(color=TEXT2))
 
 # ── CSS ──────────────────────────────────────────────────
 st.markdown(f"""
@@ -44,11 +44,12 @@ st.markdown(f"""
 .stApp {{ background-color: {BG}; }}
 [data-testid="stAppViewContainer"] > .main {{ background-color: {BG}; }}
 [data-testid="stSidebar"] {{
-    background-color: #0a1628;
-    border-right: 1px solid {BORDER};
+    background-color: {CARD};
+    border-right: 2px solid {BORDER};
+    box-shadow: 2px 0 8px rgba(0,0,0,0.06);
 }}
 [data-testid="stSidebar"] * {{ color: {TEXT2} !important; }}
-[data-testid="stSidebar"] h2 {{ color: {TEXT} !important; font-size:1rem !important; font-weight:600 !important; }}
+[data-testid="stSidebar"] h2 {{ color: {CYAN} !important; font-size:1rem !important; font-weight:700 !important; }}
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
     padding: 10px 14px !important;
     border-radius: 8px !important;
@@ -67,20 +68,23 @@ hr {{ border-color: {BORDER} !important; }}
     background: {CARD};
     border: 1px solid {BORDER};
     border-top: 3px solid {CYAN};
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 20px 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }}
 [data-testid="stMetricValue"] {{ font-size:1.8rem !important; font-weight:700 !important; color:{CYAN} !important; }}
 [data-testid="stMetricLabel"] {{ font-size:0.78rem !important; color:{TEXT2} !important; text-transform:uppercase; letter-spacing:0.05em; }}
-span[data-baseweb="tag"] {{ background-color: #0e3a50 !important; color:{CYAN} !important; }}
+[data-testid="stMetricDelta"] {{ font-size:0.82rem !important; }}
+span[data-baseweb="tag"] {{ background-color: #E3F2FD !important; color:{CYAN} !important; }}
 span[data-baseweb="tag"] span {{ color:{CYAN} !important; }}
 .stRadio label {{ color:{TEXT2} !important; font-size:0.88rem !important; }}
 .stButton button {{
     background-color: {CARD} !important; color:{CYAN} !important;
-    border: 1px solid {BORDER} !important; border-radius:4px !important;
+    border: 1px solid {BORDER} !important; border-radius:6px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;
 }}
-.stButton button:hover {{ border-color:{CYAN} !important; background-color:#0e3a50 !important; }}
-[data-testid="stDataFrame"] {{ border:1px solid {BORDER}; border-radius:8px; }}
+.stButton button:hover {{ border-color:{CYAN} !important; background-color:#E3F2FD !important; }}
+[data-testid="stDataFrame"] {{ border:1px solid {BORDER}; border-radius:10px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }}
 .stTextInput input {{
     background-color: {CARD} !important;
     border: 1px solid {BORDER} !important;
@@ -91,6 +95,12 @@ span[data-baseweb="tag"] span {{ color:{CYAN} !important; }}
     background-color: {CARD} !important;
     border: 1px solid {BORDER} !important;
     color: {TEXT} !important;
+}}
+.stExpander {{
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px !important;
+    background: {CARD} !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -486,7 +496,7 @@ if page == "📈 매출 대시보드":
     fig_sales.add_trace(go.Scatter(
         x=monthly["year_month"], y=y_v, name="결제금액",
         mode="lines+markers", line=dict(color=CYAN, width=3, shape="spline"),
-        marker=dict(size=7, color=CYAN), fill="tozeroy", fillcolor="rgba(0,188,212,0.12)",
+        marker=dict(size=7, color=CYAN), fill="tozeroy", fillcolor="rgba(21,101,192,0.10)",
         text=y_fmt, hovertemplate="%{text}<extra></extra>"
     ), secondary_y=False)
     fig_sales.add_trace(go.Scatter(
@@ -506,7 +516,7 @@ if page == "📈 매출 대시보드":
         ch_df = filtered.groupby("client").agg(결제금액=("net_sales","sum")).sort_values("결제금액", ascending=True).reset_index()
         fig_ch = go.Figure(go.Bar(
             x=ch_df["결제금액"]/1e8, y=ch_df["client"], orientation="h",
-            marker=dict(color=ch_df["결제금액"], colorscale=[[0,CARD2],[1,CYAN]], showscale=False),
+            marker=dict(color=ch_df["결제금액"], colorscale=[[0,"#BBDEFB"],[1,CYAN]], showscale=False),
             text=[f"₩{v/1e8:.1f}억" for v in ch_df["결제금액"]],
             textposition="outside", textfont=dict(color=TEXT2)
         ))
@@ -520,9 +530,9 @@ if page == "📈 매출 대시보드":
         mid_df = filtered.groupby("medium_category").agg(결제금액=("net_sales","sum")).sort_values("결제금액", ascending=False).head(10).reset_index()
         fig_mid = go.Figure(go.Pie(
             values=mid_df["결제금액"], labels=mid_df["medium_category"],
-            marker=dict(colors=PIE_COLORS, line=dict(color=BG, width=2)),
+            marker=dict(colors=PIE_COLORS, line=dict(color="#FFFFFF", width=2)),
             textposition="inside", textinfo="percent+label",
-            textfont=dict(size=11, color=BG), hole=0.4
+            textfont=dict(size=11, color="#FFFFFF"), hole=0.4
         ))
         fig_mid.update_layout(height=380, plot_bgcolor=CARD, paper_bgcolor=CARD,
                               font=dict(color=TEXT2), margin=dict(t=20,b=20,l=10,r=10), showlegend=False)
@@ -552,9 +562,9 @@ if page == "📈 매출 대시보드":
     piv_t = piv.pivot(index="client", columns="year_month", values="net_sales").fillna(0)
     fig_heat = go.Figure(go.Heatmap(
         z=piv_t.values/1e8, x=piv_t.columns.tolist(), y=piv_t.index.tolist(),
-        colorscale=[[0,CARD2],[0.5,"#00838F"],[1,CYAN]],
+        colorscale=[[0,"#EEF2F7"],[0.5,"#90CAF9"],[1,CYAN]],
         text=[[f"₩{v:.1f}억" for v in row] for row in piv_t.values/1e8],
-        texttemplate="%{text}", textfont=dict(color=TEXT, size=11),
+        texttemplate="%{text}", textfont=dict(color="#1A2332", size=11),
         colorbar=dict(title=dict(text="억원", font=dict(color=TEXT2)), tickfont=dict(color=TEXT2))
     ))
     fig_heat.update_layout(height=340, plot_bgcolor=CARD, paper_bgcolor=CARD,
@@ -577,7 +587,7 @@ if page == "📈 매출 대시보드":
         fig_sv = go.Figure(go.Scatter(
             x=sm2["year_month"], y=sv_y, mode="lines+markers",
             line=dict(color=CYAN, width=2.5, shape="spline"), marker=dict(size=7, color=CYAN),
-            fill="tozeroy", fillcolor="rgba(0,188,212,0.10)",
+            fill="tozeroy", fillcolor="rgba(21,101,192,0.10)",
             text=sv_fmt, hovertemplate="%{text}<extra></extra>"
         ))
         fig_sv.update_layout(height=CHART_H, **nl())
@@ -595,7 +605,7 @@ if page == "📈 매출 대시보드":
         fig_stk = go.Figure(go.Scatter(
             x=stk["year_month"], y=stk["입고수량"], mode="lines+markers",
             line=dict(color=CYAN2, width=2.5, shape="spline"), marker=dict(size=7, color=CYAN2),
-            fill="tozeroy", fillcolor="rgba(77,208,225,0.10)",
+            fill="tozeroy", fillcolor="rgba(21,101,192,0.08)",
             hovertemplate="입고: %{y:,}개<extra></extra>"
         ))
         fig_stk.update_layout(height=CHART_H, **nl())
@@ -657,7 +667,7 @@ elif page == "🔍 상세 데이터 조회":
             x=spark["year_month"], y=spark["net_sales"]/1e8,
             mode="lines+markers", line=dict(color=CYAN, width=3, shape="spline"),
             marker=dict(size=7, color=CYAN, line=dict(color=BG, width=2)),
-            fill="tozeroy", fillcolor="rgba(0,188,212,0.12)",
+            fill="tozeroy", fillcolor="rgba(21,101,192,0.10)",
             text=[f"₩{v:.2f}억" for v in spark["net_sales"]/1e8],
             hovertemplate="%{x}: %{text}<extra></extra>"
         ))
@@ -750,8 +760,8 @@ elif page == "🧾 주문 상세분석":
         fig_donut = go.Figure(go.Pie(
             values=[n_single, n_multi, n_unknown],
             labels=["단수구매", "복수구매", "미확인"],
-            marker=dict(colors=[CYAN, GOLD, TEXT2], line=dict(color=BG, width=2)),
-            textinfo="percent+label", textfont=dict(size=13, color=BG),
+            marker=dict(colors=[CYAN, GOLD, TEXT2], line=dict(color="#FFFFFF", width=2)),
+            textinfo="percent+label", textfont=dict(size=13, color="#FFFFFF"),
             hole=0.5
         ))
         fig_donut.update_layout(
@@ -1088,7 +1098,7 @@ elif page == "💬 챗봇":
     <div style='background:{CARD};border:1px solid {BORDER};border-radius:8px;padding:16px 20px;margin-bottom:20px;'>
         <p style='color:{TEXT2};font-size:0.85rem;margin:0 0 8px 0;'>💡 <b style='color:{TEXT};'>이런 질문을 해보세요</b></p>
         <div style='display:flex;flex-wrap:wrap;gap:8px;'>
-            {"".join([f"<span style='background:#0e3a50;color:{CYAN};padding:4px 12px;border-radius:20px;font-size:0.82rem;'>{ex}</span>"
+            {"".join([f"<span style='background:#E3F2FD;color:{CYAN};padding:4px 12px;border-radius:20px;font-size:0.82rem;font-weight:500;'>{ex}</span>"
                       for ex in ["6월 21일 매출 얼마야?","이번달 판매수량 알려줘","지난달 채널별 결제금액","최근 30일 주문건수",
                                  "5월 상품 순위 TOP 5","오늘 매출","이번달 채월별 매출"]])}
         </div>
