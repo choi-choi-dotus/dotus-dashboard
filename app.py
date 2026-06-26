@@ -568,52 +568,48 @@ elif page == "🧾 주문번호별 조회":
     st.markdown("### 합포장 상품 조합 분석")
     multi_df = ord_known[ord_known["order_no_1_str"].isin(multi_orders)].copy()
 
-    @st.cache_data
-    def calc_combos(df_input):
-        combo_counts = {}
-        for order_id, group in df_input.groupby("order_no_1_str"):
-            prods = sorted(group["product_name"].dropna().unique().tolist())
-            for combo in combinations(prods, 2):
-                combo_counts[combo] = combo_counts.get(combo, 0) + 1
-        if not combo_counts:
-            return pd.DataFrame(columns=["상품 A","상품 B","합포 건수"])
-        combo_df = pd.DataFrame(
-            [(a, b, cnt) for (a,b), cnt in combo_counts.items()],
-            columns=["상품 A","상품 B","합포 건수"]
-        ).sort_values("합포 건수", ascending=False).reset_index(drop=True)
-        combo_df.index += 1
-        return combo_df
+    if multi_df.empty:
+        st.info("합포장 데이터가 없습니다.")
+    else:
+        all_products = sorted(multi_df["product_name"].dropna().unique().tolist())
+        search_kw = st.text_input("상품명 검색", placeholder="예: 오딧 캐리어", key="prod_search")
+        filtered_products = [p for p in all_products if search_kw.strip().lower() in p.lower()] if search_kw.strip() else all_products
 
-    combo_df = calc_combos(multi_df)
-
-    tab_a, tab_b = st.tabs(["📋 전체 조합 순위", "🔍 특정 상품 기준 합포 순위"])
-
-    with tab_a:
-        st.markdown(f"<span style='color:{TEXT2};font-size:0.85rem;'>합포장 주문에서 함께 주문된 상품 조합 순위 (상위 100개)</span>", unsafe_allow_html=True)
-        st.dataframe(combo_df.head(100), use_container_width=True, hide_index=False, height=450)
-
-    with tab_b:
-        if not multi_df.empty:
-            all_products = sorted(multi_df["product_name"].dropna().unique().tolist())
-            search_kw = st.text_input("상품명 검색", placeholder="예: 오딧 캐리어", key="prod_search")
-            filtered_products = [p for p in all_products if search_kw.strip().lower() in p.lower()] if search_kw.strip() else all_products
-
-            if filtered_products:
-                sel_product = st.selectbox("상품 선택", options=filtered_products, key="prod_select")
-                paired = combo_df[
-                    (combo_df["상품 A"] == sel_product) | (combo_df["상품 B"] == sel_product)
-                ].copy()
-                paired["함께 합포된 상품"] = paired.apply(
-                    lambda r: r["상품 B"] if r["상품 A"] == sel_product else r["상품 A"], axis=1
-                )
-                paired = paired[["함께 합포된 상품","합포 건수"]].reset_index(drop=True)
-                paired.index += 1
-                st.markdown(f"**{sel_product}** 와(과) 함께 합포된 상품 순위")
-                st.dataframe(paired, use_container_width=True, hide_index=False, height=450)
-            else:
-                st.warning("검색 결과가 없습니다.")
+        if not filtered_products:
+            st.warning("검색 결과가 없습니다.")
         else:
-            st.info("합포장 데이터가 없습니다.")
+            sel_product = st.selectbox("상품 선택", options=filtered_products, key="prod_select")
+
+            # 선택 상품이 포함된 합포 주문 추출
+            orders_with = multi_df[multi_df["product_name"] == sel_product]["order_no_1_str"].unique()
+            n_orders_with = len(orders_with)
+
+            # 그 주문들에서 선택 상품 제외한 나머지 상품 집계
+            paired_df = multi_df[
+                (multi_df["order_no_1_str"].isin(orders_with)) &
+                (multi_df["product_name"] != sel_product)
+            ]
+
+            if paired_df.empty:
+                st.info("함께 구매된 다른 상품이 없습니다.")
+            else:
+                paired_agg = paired_df.groupby("product_name").agg(
+                    합포건수=("order_no_1_str", "nunique"),
+                    판매수량=("net_qty", "sum"),
+                    결제금액=("net_sales", "sum")
+                ).reset_index().rename(columns={"product_name": "함께 구매한 상품"})
+                paired_agg = paired_agg.sort_values("합포건수", ascending=False).reset_index(drop=True)
+                paired_agg.index += 1
+
+                st.markdown(f"<span style='color:{TEXT2};font-size:0.9rem;'>"
+                            f"<b style='color:{CYAN};'>{sel_product}</b> 포함 합포 주문 "
+                            f"<b style='color:{TEXT};'>{n_orders_with:,}건</b> 중 함께 구매한 상품 순위"
+                            f"</span>", unsafe_allow_html=True)
+
+                disp = paired_agg.copy()
+                disp["결제금액"] = disp["결제금액"].apply(lambda x: f"₩{x:,}")
+                disp.columns = ["함께 구매한 상품", "합포 건수", "판매수량", "결제금액"]
+                st.dataframe(disp, use_container_width=True, hide_index=False, height=500)
 
 # ════════════════════════════════════════════════════════
 # PAGE 4 : 재고소진일정
