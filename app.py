@@ -50,39 +50,44 @@ st.markdown(f"""
 }}
 [data-testid="stSidebar"] * {{ color: {TEXT2} !important; }}
 [data-testid="stSidebar"] h2 {{ color: {CYAN} !important; font-size:1rem !important; font-weight:700 !important; }}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {{
-    padding: 10px 14px !important;
+/* 사이드바 네비 버튼 공통 */
+[data-testid="stSidebar"] .stButton button {{
+    text-align: left !important;
+    justify-content: flex-start !important;
+    background: transparent !important;
+    border: none !important;
     border-radius: 8px !important;
+    color: {TEXT2} !important;
     font-size: 0.92rem !important;
     font-weight: 500 !important;
-    cursor: pointer !important;
-    display: flex !important;
-    align-items: center !important;
-    color: {TEXT2} !important;
-    margin-bottom: 4px !important;
+    padding: 10px 14px !important;
+    margin-bottom: 2px !important;
+    box-shadow: none !important;
     transition: background 0.15s !important;
+    width: 100% !important;
 }}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) {{
-    background-color: #E3F2FD !important;
+[data-testid="stSidebar"] .stButton button:hover {{
+    background: #F0F7FF !important;
+    color: {CYAN} !important;
+    border: none !important;
+}}
+/* 활성 버튼 - nav-active div로 감싼 버튼 */
+[data-testid="stSidebar"] .nav-active .stButton button {{
+    background: #E3F2FD !important;
     color: {CYAN} !important;
     border-left: 3px solid {CYAN} !important;
-}}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) p,
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) span,
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:has(input:checked) div {{
-    color: {CYAN} !important;
     font-weight: 600 !important;
+    border-radius: 0 8px 8px 0 !important;
 }}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {{
-    background-color: #F0F7FF !important;
+/* 로그아웃 버튼은 별도 */
+[data-testid="stSidebar"] .logout-btn .stButton button {{
+    color: #C62828 !important;
+    border: 1px solid #FFCDD2 !important;
+    border-radius: 8px !important;
+    background: transparent !important;
 }}
-/* Streamlit 내부 선택 오버라이드 */
-[data-testid="stSidebar"] .stRadio [data-baseweb="radio"] > div:first-child {{
-    background-color: transparent !important;
-    border-color: {CYAN} !important;
-}}
-[data-testid="stSidebar"] .stRadio input:checked ~ div {{
-    background-color: {CYAN} !important;
+[data-testid="stSidebar"] .logout-btn .stButton button:hover {{
+    background: #FFEBEE !important;
 }}
 p, span, label, div {{ color: {TEXT2}; }}
 h1, h2, h3, h4 {{ color: {TEXT} !important; }}
@@ -580,6 +585,10 @@ def answer_question(q, df, today):
             f"판매수량 {qty:,}개  ·  주문건수 {orders:,}건")
 
 # ── 사이드바 메뉴 ─────────────────────────────────────────
+PAGES = ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정", "💬 챗봇"]
+if "current_page" not in st.session_state:
+    st.session_state.current_page = PAGES[0]
+
 with st.sidebar:
     st.markdown("## 📊 Dotus")
     data_min = df_sales["date"].min().strftime("%Y.%m.%d")
@@ -591,15 +600,23 @@ with st.sidebar:
         <p style='color:{CYAN};font-size:0.82rem;font-weight:600;margin:0;'>{data_min} ~ {data_max}</p>
     </div>""", unsafe_allow_html=True)
     st.markdown("---")
-    page = st.radio(
-        "메뉴",
-        ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정", "💬 챗봇"],
-        label_visibility="collapsed"
-    )
+    for p in PAGES:
+        is_active = st.session_state.current_page == p
+        if is_active:
+            st.markdown('<div class="nav-active">', unsafe_allow_html=True)
+        if st.button(p, key=f"nav_{p}", use_container_width=True):
+            st.session_state.current_page = p
+            st.rerun()
+        if is_active:
+            st.markdown('</div>', unsafe_allow_html=True)
     st.markdown("---")
+    st.markdown('<div class="logout-btn">', unsafe_allow_html=True)
     if st.button("🚪 로그아웃", use_container_width=True):
         st.session_state.authenticated = False
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+page = st.session_state.current_page
 
 # ════════════════════════════════════════════════════════
 # PAGE 1 : 매출 대시보드
