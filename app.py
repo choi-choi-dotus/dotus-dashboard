@@ -625,8 +625,19 @@ elif page == "📦 재고소진일정":
 
     today = date.today()
 
+    # ── 주차 계산 (오늘 기준 이번주/다음주/다다음주) ─────
+    monday_w1 = today - timedelta(days=today.weekday())
+    monday_w2 = monday_w1 + timedelta(weeks=1)
+    monday_w3 = monday_w1 + timedelta(weeks=2)
+    sunday_w1 = monday_w1 + timedelta(days=6)
+    sunday_w2 = monday_w2 + timedelta(days=6)
+    sunday_w3 = monday_w3 + timedelta(days=6)
+    w1_label  = f"{monday_w1.strftime('%m/%d')}~{sunday_w1.strftime('%m/%d')}"
+    w2_label  = f"{monday_w2.strftime('%m/%d')}~{sunday_w2.strftime('%m/%d')}"
+    w3_label  = f"{monday_w3.strftime('%m/%d')}~{sunday_w3.strftime('%m/%d')}"
+
     with st.expander("🔧 조회 조건", expanded=True):
-        ec1, ec2 = st.columns([3, 2])
+        ec1, ec2, ec3 = st.columns([2, 2, 2])
         with ec1:
             preset = st.radio(
                 "일평균 계산 기간",
@@ -634,13 +645,21 @@ elif page == "📦 재고소진일정":
                 horizontal=True, key="inv_preset"
             )
         with ec2:
-            inv_file = st.file_uploader("재고파일 업로드 (.xlsx)", type=["xlsx"], key="inv_upload")
+            inv_file = st.file_uploader("📦 재고파일 업로드 (.xlsx)", type=["xlsx"], key="inv_upload")
             if inv_file is not None:
                 st.session_state["inv_bytes"] = inv_file.read()
                 st.session_state["inv_name"]  = inv_file.name
                 st.session_state["inv_time"]  = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
             if "inv_time" in st.session_state:
-                st.caption(f"📁 최근 업로드: {st.session_state['inv_name']}  |  {st.session_state['inv_time']}")
+                st.caption(f"📁 {st.session_state['inv_name']}  |  {st.session_state['inv_time']}")
+        with ec3:
+            po_file = st.file_uploader("🚚 입고예정파일 업로드 (.xlsx)", type=["xlsx"], key="po_upload")
+            if po_file is not None:
+                st.session_state["po_bytes"] = po_file.read()
+                st.session_state["po_name"]  = po_file.name
+                st.session_state["po_time"]  = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+            if "po_time" in st.session_state:
+                st.caption(f"📁 {st.session_state['po_name']}  |  {st.session_state['po_time']}")
 
         # 기간 계산
         if preset == "이번달":
@@ -656,7 +675,7 @@ elif page == "📦 재고소진일정":
         elif preset == "최근 90일":
             period_from = today - timedelta(days=90)
             period_to   = today
-        else:  # 직접 입력
+        else:
             dc1, dc2 = st.columns(2)
             with dc1:
                 period_from = st.date_input("시작일", value=today - timedelta(days=30),
@@ -681,8 +700,52 @@ elif page == "📦 재고소진일정":
     avg_by_pid["product_id"] = avg_by_pid["product_id"].astype(str).str.strip()
     avg_by_pid["일평균결제수량"] = (avg_by_pid["판매수량합"] / days_avg).round(2)
 
+    # ── 입고예정 데이터 처리 ─────────────────────────────
+    po_bytes = st.session_state.get("po_bytes", None)
+    incoming_by_pid = {}   # {product_id: [(date, qty), ...]}
+
+    if po_bytes is not None:
+        po_wb   = openpyxl.load_workbook(io.BytesIO(po_bytes), read_only=True, data_only=True)
+        ws_po   = po_wb.active
+        po_rows = list(ws_po.iter_rows(values_only=True))
+        po_data = [r[:7] for r in po_rows[1:]
+                   if r[0] is not None and str(r[0]).strip() not in ("", "품명", "상품명")]
+        po_df   = pd.DataFrame(po_data, columns=["상품명","product_id","대분류","중분류","소분류","수량","예정일"])
+        po_df["product_id"] = po_df["product_id"].astype(str).str.strip()
+        po_df["수량"]   = pd.to_numeric(po_df["수량"], errors="coerce").fillna(0).astype(int)
+        po_df["예정일"] = pd.to_datetime(po_df["예정일"], errors="coerce").dt.date
+        po_df = po_df.dropna(subset=["예정일"])
+        for pid, grp in po_df.groupby("product_id"):
+            incoming_by_pid[str(pid)] = list(zip(grp["예정일"], grp["수량"]))
+
+    def week_qty(pid, w_from, w_to):
+        return sum(qty for d, qty in incoming_by_pid.get(str(pid), []) if w_from <= d <= w_to)
+
+    # ── 소진일 타임라인 시뮬레이션 ──────────────────────
+    def calc_depletion_timeline(stock, daily_rate, incoming_list):
+        """입고예정을 반영한 타임라인 기반 소진일 계산"""
+        if pd.isna(daily_rate) or daily_rate <= 0:
+            return None
+        remaining    = float(stock)
+        current_date = today
+        total_days   = 0
+        for event_date, event_qty in sorted(incoming_list, key=lambda x: x[0]):
+            if event_date <= current_date:
+                remaining += event_qty   # 이미 지난 입고는 즉시 반영
+                continue
+            days_gap   = (event_date - current_date).days
+            stock_used = daily_rate * days_gap
+            if remaining <= stock_used:
+                return total_days + int(remaining / daily_rate)
+            remaining   -= stock_used
+            remaining   += event_qty
+            total_days  += days_gap
+            current_date = event_date
+        if remaining <= 0:
+            return total_days
+        return total_days + int(remaining / daily_rate)
+
     # ── 재고파일 처리 ─────────────────────────────────────
-    # 세션에 저장된 파일 또는 새 업로드 파일 사용
     inv_bytes = st.session_state.get("inv_bytes", None)
 
     if inv_bytes is None:
@@ -690,31 +753,36 @@ elif page == "📦 재고소진일정":
         st.markdown(f"""
         <div style='background:{CARD};border:1px dashed {BORDER};border-radius:8px;padding:20px;margin-top:12px;'>
             <p style='color:{TEXT2};margin:0;font-size:0.9rem;'>
-            📋 업로드 파일 형식: <span style='color:{CYAN};'>상품명 / 품번 / 대분류 / 중분류 / 소분류 / 재고수량</span>
+            📦 재고파일: <span style='color:{CYAN};'>상품명 / 품번 / 대분류 / 중분류 / 소분류 / 재고수량</span><br><br>
+            🚚 입고예정파일: <span style='color:{CYAN};'>상품명 / 품번 / 대분류 / 중분류 / 소분류 / 수량 / 예정일</span>
             </p>
         </div>""", unsafe_allow_html=True)
     else:
-        # 파일 읽기 (세션 저장 바이트 사용)
-        inv_wb = openpyxl.load_workbook(io.BytesIO(inv_bytes), read_only=True, data_only=True)
-        ws_inv = inv_wb.active
+        inv_wb   = openpyxl.load_workbook(io.BytesIO(inv_bytes), read_only=True, data_only=True)
+        ws_inv   = inv_wb.active
         inv_rows = list(ws_inv.iter_rows(values_only=True))
-        # 헤더가 2행인 경우 대비 → 첫 번째 셀이 문자열인 행만 데이터로 처리
-        inv_data = [r[:6] for r in inv_rows[1:] if r[0] is not None and not str(r[0]).strip() in ("", "품명", "상품명", "합계")]
+        inv_data = [r[:6] for r in inv_rows[1:]
+                    if r[0] is not None and str(r[0]).strip() not in ("", "품명", "상품명", "합계")]
         inv_df = pd.DataFrame(inv_data, columns=["상품명","product_id","대분류","중분류","소분류","재고수량"])
         inv_df["product_id"] = inv_df["product_id"].astype(str).str.strip()
-        inv_df["재고수량"] = pd.to_numeric(inv_df["재고수량"], errors="coerce").fillna(0).astype(int)
+        inv_df["재고수량"]   = pd.to_numeric(inv_df["재고수량"], errors="coerce").fillna(0).astype(int)
 
-        # 매출 데이터와 조인
         result = inv_df.merge(avg_by_pid[["product_id","판매수량합","일평균결제수량"]], on="product_id", how="left")
         result["판매수량합"] = result["판매수량합"].fillna(0).astype(int)
 
-        # 소진 계산
-        def calc_days(row):
-            if pd.isna(row["일평균결제수량"]) or row["일평균결제수량"] <= 0:
-                return None
-            return int(row["재고수량"] / row["일평균결제수량"])
+        # 주차별 입고예정 수량 컬럼
+        result["w1"] = result["product_id"].apply(lambda p: week_qty(p, monday_w1, sunday_w1))
+        result["w2"] = result["product_id"].apply(lambda p: week_qty(p, monday_w2, sunday_w2))
+        result["w3"] = result["product_id"].apply(lambda p: week_qty(p, monday_w3, sunday_w3))
 
-        result["잔여일수"] = result.apply(calc_days, axis=1)
+        # 소진일 계산 (입고예정 타임라인 반영)
+        result["잔여일수"] = result.apply(
+            lambda r: calc_depletion_timeline(
+                r["재고수량"],
+                r["일평균결제수량"],
+                incoming_by_pid.get(str(r["product_id"]), [])
+            ), axis=1
+        )
         result["소진예정일"] = result["잔여일수"].apply(
             lambda d: (today + timedelta(days=int(d))).strftime("%Y-%m-%d") if pd.notna(d) else "-"
         )
@@ -725,21 +793,16 @@ elif page == "📦 재고소진일정":
             lambda d: f"{int(d):,}일" if pd.notna(d) else "-"
         )
 
-        # 상태 컬럼
         def get_status(row):
             if pd.isna(row["잔여일수"]):
                 return "⬜ 결제수량 없음"
             d = row["잔여일수"]
-            if d <= 7:
-                return "🔴 긴급"
-            elif d <= 30:
-                return "🟡 주의"
-            else:
-                return "🟢 여유"
+            if d <= 7:   return "🔴 긴급"
+            elif d <= 30: return "🟡 주의"
+            else:         return "🟢 여유"
 
         result["상태"] = result.apply(get_status, axis=1)
 
-        # 정렬: 긴급→주의→여유→결제수량없음, 각 그룹 내 잔여일수 오름차순
         status_order = {"🔴 긴급": 0, "🟡 주의": 1, "🟢 여유": 2, "⬜ 결제수량 없음": 3}
         result["_sort"] = result["상태"].map(status_order)
         result = result.sort_values(["_sort", "잔여일수"]).drop(columns="_sort").reset_index(drop=True)
@@ -760,11 +823,21 @@ elif page == "📦 재고소진일정":
         st.markdown("---")
 
         # ── 결과 테이블 ───────────────────────────────────
-        st.markdown(f"### 재고 소진 예정 현황  <span style='color:{TEXT2};font-size:0.85rem;'>전체 {len(result):,}개 품목</span>", unsafe_allow_html=True)
+        po_note = "✅ 입고예정 반영됨" if po_bytes else "⚠️ 입고예정파일 미업로드 (현재 재고 기준)"
+        st.markdown(f"### 재고 소진 예정 현황  <span style='color:{TEXT2};font-size:0.85rem;'>전체 {len(result):,}개 품목 · {po_note}</span>", unsafe_allow_html=True)
 
-        disp = result[["상품명","product_id","대분류","중분류","소분류","재고수량","판매수량합","일평균결제수량_표시","잔여일수_표시","소진예정일","상태"]].copy()
-        disp.columns = ["상품명","품번","대분류","중분류","소분류","재고수량",f"기간총출고량({days_avg}일)","일평균결제수량","잔여일수","소진예정일","상태"]
-
+        disp = result[[
+            "상품명","product_id","대분류","중분류","소분류",
+            "재고수량","판매수량합","일평균결제수량_표시",
+            "w1","w2","w3",
+            "잔여일수_표시","소진예정일","상태"
+        ]].copy()
+        disp.columns = [
+            "상품명","품번","대분류","중분류","소분류",
+            "재고수량", f"기간총출고량({days_avg}일)", "일평균결제수량",
+            f"입고({w1_label})", f"입고({w2_label})", f"입고({w3_label})",
+            "잔여일수","소진예정일","상태"
+        ]
         st.dataframe(disp, use_container_width=True, hide_index=False, height=600)
 
         # ── 긴급 품목 별도 강조 ───────────────────────────
@@ -772,8 +845,15 @@ elif page == "📦 재고소진일정":
         if not urgent_df.empty:
             st.markdown("---")
             st.markdown(f"### 🔴 긴급 소진 임박 품목 ({n_urgent}개)")
-            urg_disp = urgent_df[["상품명","product_id","재고수량","판매수량합","일평균결제수량_표시","잔여일수_표시","소진예정일"]].copy()
-            urg_disp.columns = ["상품명","품번","재고수량",f"기간총출고량({days_avg}일)","일평균결제수량","잔여일수","소진예정일"]
+            urg_disp = urgent_df[[
+                "상품명","product_id","재고수량","판매수량합","일평균결제수량_표시",
+                "w1","w2","w3","잔여일수_표시","소진예정일"
+            ]].copy()
+            urg_disp.columns = [
+                "상품명","품번","재고수량", f"기간총출고량({days_avg}일)", "일평균결제수량",
+                f"입고({w1_label})", f"입고({w2_label})", f"입고({w3_label})",
+                "잔여일수","소진예정일"
+            ]
             urg_disp = urg_disp.reset_index(drop=True)
             urg_disp.index += 1
             st.dataframe(urg_disp, use_container_width=True, hide_index=False)
