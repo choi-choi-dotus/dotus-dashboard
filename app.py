@@ -695,7 +695,8 @@ elif page == "📦 재고소진일정":
         inv_df["재고수량"] = pd.to_numeric(inv_df["재고수량"], errors="coerce").fillna(0).astype(int)
 
         # 매출 데이터와 조인
-        result = inv_df.merge(avg_by_pid[["product_id","일평균결제수량"]], on="product_id", how="left")
+        result = inv_df.merge(avg_by_pid[["product_id","판매수량합","일평균결제수량"]], on="product_id", how="left")
+        result["판매수량합"] = result["판매수량합"].fillna(0).astype(int)
 
         # 소진 계산
         def calc_days(row):
@@ -751,8 +752,8 @@ elif page == "📦 재고소진일정":
         # ── 결과 테이블 ───────────────────────────────────
         st.markdown(f"### 재고 소진 예정 현황  <span style='color:{TEXT2};font-size:0.85rem;'>전체 {len(result):,}개 품목</span>", unsafe_allow_html=True)
 
-        disp = result[["상품명","product_id","대분류","중분류","소분류","재고수량","일평균결제수량_표시","잔여일수_표시","소진예정일","상태"]].copy()
-        disp.columns = ["상품명","품번","대분류","중분류","소분류","재고수량","일평균결제수량","잔여일수","소진예정일","상태"]
+        disp = result[["상품명","product_id","대분류","중분류","소분류","재고수량","판매수량합","일평균결제수량_표시","잔여일수_표시","소진예정일","상태"]].copy()
+        disp.columns = ["상품명","품번","대분류","중분류","소분류","재고수량",f"기간총출고량({days_avg}일)","일평균결제수량","잔여일수","소진예정일","상태"]
 
         st.dataframe(disp, use_container_width=True, hide_index=False, height=600)
 
@@ -761,8 +762,8 @@ elif page == "📦 재고소진일정":
         if not urgent_df.empty:
             st.markdown("---")
             st.markdown(f"### 🔴 긴급 소진 임박 품목 ({n_urgent}개)")
-            urg_disp = urgent_df[["상품명","product_id","재고수량","일평균결제수량_표시","잔여일수_표시","소진예정일"]].copy()
-            urg_disp.columns = ["상품명","품번","재고수량","일평균결제수량","잔여일수","소진예정일"]
+            urg_disp = urgent_df[["상품명","product_id","재고수량","판매수량합","일평균결제수량_표시","잔여일수_표시","소진예정일"]].copy()
+            urg_disp.columns = ["상품명","품번","재고수량",f"기간총출고량({days_avg}일)","일평균결제수량","잔여일수","소진예정일"]
             urg_disp = urg_disp.reset_index(drop=True)
             urg_disp.index += 1
             st.dataframe(urg_disp, use_container_width=True, hide_index=False)
