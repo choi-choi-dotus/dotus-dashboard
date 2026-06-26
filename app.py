@@ -177,14 +177,52 @@ def answer_question(q, df, today):
     date_filter  = None
     period_label = None
 
-    # N월 M일
-    m = re.search(r'(\d+)월\s*(\d+)일', q_orig)
+    # N월 M일부터 N월 K일까지 / N월 M일~N월 K일
+    m = re.search(r'(\d+)월\s*(\d+)일\s*(?:부터|~|∼|-)\s*(\d+)월\s*(\d+)일', q_orig)
     if m:
         try:
-            d = date(today.year, int(m.group(1)), int(m.group(2)))
-            date_filter  = (d, d)
-            period_label = f"{today.year}년 {m.group(1)}월 {m.group(2)}일"
+            d1 = date(today.year, int(m.group(1)), int(m.group(2)))
+            d2 = date(today.year, int(m.group(3)), int(m.group(4)))
+            if d1 > d2: d1, d2 = d2, d1
+            date_filter  = (d1, d2)
+            period_label = f"{m.group(1)}월 {m.group(2)}일 ~ {m.group(3)}월 {m.group(4)}일"
         except: pass
+
+    # N월 M일부터 K일까지 (같은 달)
+    if not date_filter:
+        m = re.search(r'(\d+)월\s*(\d+)일\s*(?:부터|~|∼|-)\s*(\d+)일', q_orig)
+        if m:
+            try:
+                mo = int(m.group(1))
+                d1 = date(today.year, mo, int(m.group(2)))
+                d2 = date(today.year, mo, int(m.group(3)))
+                if d1 > d2: d1, d2 = d2, d1
+                date_filter  = (d1, d2)
+                period_label = f"{mo}월 {m.group(2)}일 ~ {m.group(3)}일"
+            except: pass
+
+    # N월부터 M월까지 / N월~M월
+    if not date_filter:
+        m = re.search(r'(\d+)월\s*(?:부터|~|∼|-)\s*(\d+)월', q_orig)
+        if m:
+            try:
+                mo1, mo2 = int(m.group(1)), int(m.group(2))
+                if mo1 > mo2: mo1, mo2 = mo2, mo1
+                d1 = date(today.year, mo1, 1)
+                d2 = date(today.year, mo2+1, 1) - timedelta(days=1) if mo2 < 12 else date(today.year, 12, 31)
+                date_filter  = (d1, d2)
+                period_label = f"{mo1}월 ~ {mo2}월"
+            except: pass
+
+    # N월 M일
+    if not date_filter:
+        m = re.search(r'(\d+)월\s*(\d+)일', q_orig)
+        if m:
+            try:
+                d = date(today.year, int(m.group(1)), int(m.group(2)))
+                date_filter  = (d, d)
+                period_label = f"{today.year}년 {m.group(1)}월 {m.group(2)}일"
+            except: pass
 
     # N월 (단독)
     if not date_filter:
@@ -254,6 +292,60 @@ def answer_question(q, df, today):
     if m:
         for g in m.groups():
             if g: n_top = int(g); break
+
+    # ── 최대/최소값 질문 ─────────────────────────────────
+    is_max = any(k in q_lower for k in ['가장 높','가장 많','최고','최대','피크','제일 높','제일 많'])
+    is_min = any(k in q_lower for k in ['가장 낮','가장 적','최저','최소','제일 낮','제일 적'])
+    by_qty = any(k in q_lower for k in ['수량','개수','출고'])
+
+    if is_max or is_min:
+        col = "net_qty" if by_qty else "net_sales"
+        lbl = "판매수량" if by_qty else "결제금액"
+        asc = is_min
+
+        # 날짜 기준
+        if any(k in q_lower for k in ['날짜','날','일자','하루']):
+            agg = filtered.groupby("date")[col].sum().reset_index()
+            row = agg.loc[agg[col].idxmin() if asc else agg[col].idxmax()]
+            direction = "최저" if asc else "최고"
+            val = f"{row[col]:,}개" if by_qty else f"₩{row[col]/1e8:.2f}억"
+            return (f"📅 {header} {lbl} {direction} 날짜\n\n"
+                    f"**{row['date'].strftime('%Y년 %m월 %d일')}**\n\n{val}")
+
+        # 월 기준
+        if any(k in q_lower for k in ['월','달']):
+            agg = filtered.groupby("year_month")[col].sum().reset_index()
+            row = agg.loc[agg[col].idxmin() if asc else agg[col].idxmax()]
+            direction = "최저" if asc else "최고"
+            val = f"{row[col]:,}개" if by_qty else f"₩{row[col]/1e8:.2f}억"
+            return (f"📅 {header} {lbl} {direction} 월\n\n"
+                    f"**{row['year_month']}**\n\n{val}")
+
+        # 상품 기준
+        if any(k in q_lower for k in ['상품','품목','제품']):
+            agg = filtered.groupby("product_name")[col].sum().reset_index()
+            row = agg.loc[agg[col].idxmin() if asc else agg[col].idxmax()]
+            direction = "최저" if asc else "최고"
+            val = f"{row[col]:,}개" if by_qty else f"₩{row[col]/1e8:.2f}억"
+            return (f"🏆 {header} {lbl} {direction} 상품\n\n"
+                    f"**{row['product_name']}**\n\n{val}")
+
+        # 채널 기준
+        if any(k in q_lower for k in ['채널','채날']):
+            agg = filtered.groupby("client")[col].sum().reset_index()
+            row = agg.loc[agg[col].idxmin() if asc else agg[col].idxmax()]
+            direction = "최저" if asc else "최고"
+            val = f"{row[col]:,}개" if by_qty else f"₩{row[col]/1e8:.2f}억"
+            return (f"🏆 {header} {lbl} {direction} 채널\n\n"
+                    f"**{row['client']}**\n\n{val}")
+
+        # 기본 = 날짜 기준
+        agg = filtered.groupby("date")[col].sum().reset_index()
+        row = agg.loc[agg[col].idxmin() if asc else agg[col].idxmax()]
+        direction = "최저" if asc else "최고"
+        val = f"{row[col]:,}개" if by_qty else f"₩{row[col]/1e8:.2f}억"
+        return (f"📅 {header} {lbl} {direction} 날짜\n\n"
+                f"**{row['date'].strftime('%Y년 %m월 %d일')}**\n\n{val}")
 
     # ── 채널별 ────────────────────────────────────────────
     if '채널별' in q_orig or '채널 별' in q_orig:
