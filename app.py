@@ -102,6 +102,99 @@ span[data-baseweb="tag"] span {{ color:{CYAN} !important; }}
     background: {CARD} !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
 }}
+/* 익스팬더 헤더 */
+[data-testid="stExpander"] details summary {{
+    background-color: {CARD2} !important;
+    color: {TEXT} !important;
+    border-radius: 10px !important;
+    padding: 12px 16px !important;
+}}
+[data-testid="stExpander"] details summary:hover {{
+    background-color: {BORDER} !important;
+}}
+[data-testid="stExpander"] details summary p,
+[data-testid="stExpander"] details summary span {{
+    color: {TEXT} !important;
+    font-weight: 600 !important;
+}}
+/* 날짜 입력 */
+[data-testid="stDateInput"] input {{
+    background-color: {CARD} !important;
+    color: {TEXT} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 6px !important;
+}}
+[data-testid="stDateInput"] > div {{
+    background-color: {CARD} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 6px !important;
+}}
+/* 멀티셀렉트 */
+[data-baseweb="select"] > div {{
+    background-color: {CARD} !important;
+    border-color: {BORDER} !important;
+    border-radius: 6px !important;
+}}
+[data-baseweb="popover"] ul {{
+    background-color: {CARD} !important;
+    border: 1px solid {BORDER} !important;
+}}
+[data-baseweb="popover"] li {{
+    background-color: {CARD} !important;
+    color: {TEXT} !important;
+}}
+[data-baseweb="popover"] li:hover {{
+    background-color: {CARD2} !important;
+}}
+[data-baseweb="menu"] {{
+    background-color: {CARD} !important;
+}}
+/* 파일 업로더 */
+[data-testid="stFileUploader"] {{
+    background-color: {CARD} !important;
+    border: 1px dashed {BORDER} !important;
+    border-radius: 8px !important;
+}}
+[data-testid="stFileUploader"] section {{
+    background-color: {CARD} !important;
+}}
+[data-testid="stFileUploaderDropzone"] {{
+    background-color: {CARD2} !important;
+    border: 1px dashed {BORDER} !important;
+}}
+/* 라디오 버튼 */
+[data-testid="stRadio"] label {{
+    color: {TEXT2} !important;
+}}
+/* 캡션 */
+[data-testid="stCaptionContainer"] p {{
+    color: {TEXT2} !important;
+}}
+/* 전체 텍스트 강제 */
+.stMarkdown p, .stMarkdown span {{
+    color: {TEXT2} !important;
+}}
+/* 채팅 */
+[data-testid="stChatMessage"] {{
+    background-color: {CARD} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px !important;
+}}
+[data-testid="stChatInput"] {{
+    background-color: {CARD} !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 10px !important;
+}}
+[data-testid="stChatInput"] textarea {{
+    background-color: {CARD} !important;
+    color: {TEXT} !important;
+}}
+/* info/warning 박스 */
+[data-testid="stAlert"] {{
+    background-color: #E3F2FD !important;
+    border-left: 4px solid {CYAN} !important;
+    color: {TEXT} !important;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -401,6 +494,14 @@ def answer_question(q, df, today):
 # ── 사이드바 메뉴 ─────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 📊 Dotus")
+    data_min = df_sales["date"].min().strftime("%Y.%m.%d")
+    data_max = df_sales["date"].max().strftime("%Y.%m.%d")
+    st.markdown(f"""
+    <div style='background:{CARD2};border:1px solid {BORDER};border-radius:8px;
+                padding:10px 14px;margin-bottom:8px;'>
+        <p style='color:{TEXT2};font-size:0.72rem;margin:0 0 4px 0;letter-spacing:0.04em;'>📅 데이터 기준</p>
+        <p style='color:{CYAN};font-size:0.82rem;font-weight:600;margin:0;'>{data_min} ~ {data_max}</p>
+    </div>""", unsafe_allow_html=True)
     st.markdown("---")
     page = st.radio(
         "메뉴",
