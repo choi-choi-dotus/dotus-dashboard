@@ -1241,6 +1241,40 @@ elif page == "📦 재고소진일정":
 
         result["상태"] = result.apply(get_status, axis=1)
 
+        # ── 공급 리스크 계산 ─────────────────────────────
+        def get_supply_risk(row):
+            pid = str(row["product_id"])
+            daily = row["일평균결제수량"]
+            stock = row["재고수량"]
+
+            # 일평균 없으면 판단 불가
+            if pd.isna(daily) or daily <= 0:
+                return "-"
+
+            # 현재 재고만으로 소진되는 날
+            days_raw = stock / daily
+            depletion_date = today + timedelta(days=int(days_raw))
+
+            # 입고예정 있는지 확인
+            incoming = incoming_by_pid.get(pid, [])
+            future_incoming = [(d, q) for d, q in incoming if d > today and q > 0]
+
+            if not future_incoming:
+                # 입고 계획 없음
+                if stock <= 0:
+                    return "📭 재고 없음 · 입고예정 없음"
+                return "📭 입고예정 없음"
+
+            # 가장 빠른 입고일
+            earliest = min(future_incoming, key=lambda x: x[0])[0]
+
+            if depletion_date < earliest:
+                gap = (earliest - depletion_date).days
+                return f"⚠️ 입고 전 {gap}일 부족"
+            return "✅ 정상"
+
+        result["공급리스크"] = result.apply(get_supply_risk, axis=1)
+
         status_order = {"🔴 긴급": 0, "🟡 주의": 1, "🟢 여유": 2, "⬜ 결제수량 없음": 3}
         result["_sort"] = result["상태"].map(status_order)
         result = result.sort_values(["_sort", "잔여일수"]).drop(columns="_sort").reset_index(drop=True)
@@ -1268,13 +1302,13 @@ elif page == "📦 재고소진일정":
             "상품명","product_id","대분류","중분류","소분류",
             "재고수량","판매수량합","일평균결제수량_표시",
             "w1","w2","w3",
-            "잔여일수_표시","소진예정일","상태"
+            "잔여일수_표시","소진예정일","상태","공급리스크"
         ]].copy()
         disp.columns = [
             "상품명","품번","대분류","중분류","소분류",
             "재고수량", f"기간총출고량({days_avg}일)", "일평균결제수량",
             f"입고({w1_label})", f"입고({w2_label})", f"입고({w3_label})",
-            "잔여일수","소진예정일","상태"
+            "잔여일수","소진예정일","상태","공급리스크"
         ]
         st.dataframe(disp, use_container_width=True, hide_index=False, height=600)
 
@@ -1285,12 +1319,12 @@ elif page == "📦 재고소진일정":
             st.markdown(f"### 🔴 긴급 소진 임박 품목 ({n_urgent}개)")
             urg_disp = urgent_df[[
                 "상품명","product_id","재고수량","판매수량합","일평균결제수량_표시",
-                "w1","w2","w3","잔여일수_표시","소진예정일"
+                "w1","w2","w3","잔여일수_표시","소진예정일","공급리스크"
             ]].copy()
             urg_disp.columns = [
                 "상품명","품번","재고수량", f"기간총출고량({days_avg}일)", "일평균결제수량",
                 f"입고({w1_label})", f"입고({w2_label})", f"입고({w3_label})",
-                "잔여일수","소진예정일"
+                "잔여일수","소진예정일","공급리스크"
             ]
             urg_disp = urg_disp.reset_index(drop=True)
             urg_disp.index += 1
