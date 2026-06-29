@@ -345,14 +345,30 @@ def load_data():
 
     ws3 = wb["품목마스터"]
     rows3 = list(ws3.iter_rows(values_only=True))
-    headers3 = rows3[0][:8]
-    data3 = [r[:8] for r in rows3[1:] if r[0] is not None]
-    df_master = pd.DataFrame(data3, columns=headers3)
+    headers3_raw = [str(h).strip() if h is not None else f"col{i}" for i, h in enumerate(rows3[0]) if h is not None]
+    n3 = len(headers3_raw)
+    data3 = [r[:n3] for r in rows3[1:] if r[0] is not None]
+    df_master = pd.DataFrame(data3, columns=headers3_raw)
+    if "리드타임" not in df_master.columns:
+        df_master["리드타임"] = 0
+    df_master["리드타임"] = pd.to_numeric(df_master["리드타임"], errors="coerce").fillna(0).astype(int)
 
     return df, df_stock, df_master
 
 df_sales, df_stock, df_master = load_data()
 HAS_SMALL = "small_category" in df_sales.columns
+
+# ── 품목 마스터 product_id 컬럼 탐색 ─────────────────────
+_pid_candidates = ["product_id", "품번", "erp코드", "상품코드"]
+MASTER_PID_COL = next((c for c in df_master.columns if str(c).strip().lower() in _pid_candidates), df_master.columns[1] if len(df_master.columns) > 1 else df_master.columns[0])
+MASTER_NAME_COL = df_master.columns[0]
+
+# ── 리드타임 session_state 초기화 ─────────────────────────
+if "lead_times" not in st.session_state:
+    st.session_state["lead_times"] = dict(
+        zip(df_master[MASTER_PID_COL].astype(str).str.strip(),
+            df_master["리드타임"].astype(int))
+    )
 
 # ── 전체 선택 멀티셀렉트 헬퍼 ────────────────────────────
 def multiselect_with_all(label, options, key, **kwargs):
@@ -585,7 +601,7 @@ def answer_question(q, df, today):
             f"판매수량 {qty:,}개  ·  주문건수 {orders:,}건")
 
 # ── 사이드바 메뉴 ─────────────────────────────────────────
-PAGES = ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정", "💬 챗봇"]
+PAGES = ["📈 매출 대시보드", "🔍 상세 데이터 조회", "🧾 주문 상세분석", "📦 재고소진일정", "⚙️ 마스터 관리", "💬 챗봇"]
 if "current_page" not in st.session_state:
     st.session_state.current_page = PAGES[0]
 
@@ -1275,6 +1291,37 @@ elif page == "📦 재고소진일정":
 
         result["공급리스크"] = result.apply(get_supply_risk, axis=1)
 
+        # ── ROP 계산 ─────────────────────────────────────
+        def get_rop_info(row):
+            pid       = str(row["product_id"])
+            daily     = row["일평균결제수량"]
+            lead_time = st.session_state["lead_times"].get(pid, 0)
+
+            if pd.isna(daily) or daily <= 0 or lead_time <= 0:
+                return "리드타임 없음", "-", "-", "-"
+
+            rop = int(daily * lead_time)
+
+            if pd.isna(row["잔여일수"]):
+                return lead_time, rop, "-", "-"
+
+            days_to_order = int(row["잔여일수"]) - lead_time
+            if days_to_order <= 0:
+                order_date   = "즉시발주"
+                order_status = "🔴 즉시발주"
+            elif days_to_order <= 7:
+                order_date   = (today + timedelta(days=days_to_order)).strftime("%m/%d")
+                order_status = "🟡 1주 내"
+            else:
+                order_date   = (today + timedelta(days=days_to_order)).strftime("%m/%d")
+                order_status = "🟢 여유"
+
+            return lead_time, rop, order_date, order_status
+
+        rop_data = result.apply(get_rop_info, axis=1, result_type="expand")
+        rop_data.columns = ["리드타임(일)", "ROP", "발주필요일", "발주상태"]
+        result = pd.concat([result, rop_data], axis=1)
+
         status_order = {"🔴 긴급": 0, "🟡 주의": 1, "🟢 여유": 2, "⬜ 결제수량 없음": 3}
         result["_sort"] = result["상태"].map(status_order)
         result = result.sort_values(["_sort", "잔여일수"]).drop(columns="_sort").reset_index(drop=True)
@@ -1302,13 +1349,15 @@ elif page == "📦 재고소진일정":
             "상품명","product_id","대분류","중분류","소분류",
             "재고수량","판매수량합","일평균결제수량_표시",
             "w1","w2","w3",
-            "잔여일수_표시","소진예정일","상태","공급리스크"
+            "잔여일수_표시","소진예정일","상태","공급리스크",
+            "리드타임(일)","ROP","발주필요일","발주상태"
         ]].copy()
         disp.columns = [
             "상품명","품번","대분류","중분류","소분류",
             "재고수량", f"기간총출고량({days_avg}일)", "일평균결제수량",
             f"입고({w1_label})", f"입고({w2_label})", f"입고({w3_label})",
-            "잔여일수","소진예정일","상태","공급리스크"
+            "잔여일수","소진예정일","상태","공급리스크",
+            "리드타임(일)","ROP","발주필요일","발주상태"
         ]
         st.dataframe(disp, use_container_width=True, hide_index=False, height=600)
 
@@ -1331,9 +1380,93 @@ elif page == "📦 재고소진일정":
             st.dataframe(urg_disp, use_container_width=True, hide_index=False)
 
 # ════════════════════════════════════════════════════════
-# PAGE 5 : 챗봇
+# PAGE 5 : 마스터 관리
 # ════════════════════════════════════════════════════════
-elif page == "💬 챗봇":
+elif page == "⚙️ 마스터 관리":
+
+    st.markdown("# ⚙️ 마스터 관리")
+    st.markdown("---")
+
+    # ── 현재 리드타임 편집 테이블 ────────────────────────
+    st.markdown("### 📋 상품별 리드타임 관리")
+
+    # 마스터 + 리드타임 병합해서 편집 테이블 생성
+    cat_cols = [c for c in df_master.columns if c not in ["리드타임", MASTER_PID_COL, MASTER_NAME_COL]][:3]
+    edit_cols = [MASTER_NAME_COL, MASTER_PID_COL] + cat_cols
+
+    edit_df = df_master[edit_cols].copy()
+    edit_df["리드타임(일)"] = edit_df[MASTER_PID_COL].astype(str).str.strip().map(
+        st.session_state["lead_times"]
+    ).fillna(0).astype(int)
+
+    col_config = {c: st.column_config.TextColumn(c, disabled=True) for c in edit_cols}
+    col_config["리드타임(일)"] = st.column_config.NumberColumn(
+        "리드타임(일)", min_value=0, max_value=365, step=1, help="생산/조달 리드타임 (일)"
+    )
+
+    edited = st.data_editor(
+        edit_df, column_config=col_config,
+        use_container_width=True, hide_index=True, height=500, key="master_editor"
+    )
+
+    if st.button("💾 리드타임 저장", type="primary"):
+        updated = dict(zip(
+            edited[MASTER_PID_COL].astype(str).str.strip(),
+            edited["리드타임(일)"].astype(int)
+        ))
+        st.session_state["lead_times"].update(updated)
+        st.success(f"✅ {len(updated):,}개 상품 리드타임 저장 완료!")
+        st.rerun()
+
+    st.markdown("---")
+
+    # ── Excel 일괄 업로드 ─────────────────────────────────
+    st.markdown("### 📥 리드타임 Excel 일괄 업로드")
+    st.caption("필수 컬럼: **품번(product_id)** · **리드타임** (일 단위 숫자)")
+
+    lt_file = st.file_uploader("리드타임 파일 업로드 (.xlsx)", type=["xlsx"], key="lt_upload")
+    if lt_file is not None:
+        lt_wb   = openpyxl.load_workbook(io.BytesIO(lt_file.read()), read_only=True, data_only=True)
+        lt_ws   = lt_wb.active
+        lt_rows = list(lt_ws.iter_rows(values_only=True))
+        lt_headers = [str(h).strip() if h else "" for h in lt_rows[0]]
+
+        # 컬럼 자동 탐색
+        pid_idx = next((i for i, h in enumerate(lt_headers) if h.lower() in ["product_id","품번","erp코드"]), None)
+        lt_idx  = next((i for i, h in enumerate(lt_headers) if "리드타임" in h or "lead" in h.lower()), None)
+
+        if pid_idx is None or lt_idx is None:
+            st.error("⚠️ '품번' 또는 '리드타임' 컬럼을 찾을 수 없습니다. 헤더를 확인해주세요.")
+        else:
+            bulk = {}
+            for r in lt_rows[1:]:
+                if r[pid_idx] is None: continue
+                pid = str(r[pid_idx]).strip()
+                try:
+                    lt_val = int(float(r[lt_idx])) if r[lt_idx] is not None else 0
+                    bulk[pid] = lt_val
+                except: pass
+
+            st.session_state["lead_times"].update(bulk)
+            st.success(f"✅ {len(bulk):,}개 상품 리드타임 일괄 업데이트 완료!")
+            st.rerun()
+
+    st.markdown("---")
+
+    # ── 현재 설정 요약 ────────────────────────────────────
+    total_products = len(df_master)
+    set_count      = sum(1 for v in st.session_state["lead_times"].values() if v > 0)
+    unset_count    = total_products - set_count
+
+    k1, k2, k3 = st.columns(3)
+    with k1: st.metric("전체 품목", f"{total_products:,}개")
+    with k2: st.metric("✅ 리드타임 설정", f"{set_count:,}개")
+    with k3: st.metric("⚠️ 미설정", f"{unset_count:,}개")
+
+# ════════════════════════════════════════════════════════
+# PAGE 6 : 챗봇
+# ════════════════════════════════════════════════════════
+elif page == "💬 챗봇":  # PAGE 6
 
     st.markdown("# 💬 데이터 챗봇")
     st.markdown("---")
